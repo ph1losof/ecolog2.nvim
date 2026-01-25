@@ -20,7 +20,7 @@ function M.pick_variables(opts)
 
   common.save_current_window()
 
-  local current_file = vim.api.nvim_buf_get_name(0)
+  local current_file = common.get_valid_file_path()
   lsp_commands.list_variables(current_file, function(vars)
     if #vars == 0 then
       notify.info("No environment variables found")
@@ -171,7 +171,7 @@ function M.pick_files(opts)
     return
   end
 
-  local current_file = vim.api.nvim_buf_get_name(0)
+  local current_file = common.get_valid_file_path()
   lsp_commands.list_files(current_file, { all = true }, function(files)
     if #files == 0 then
       notify.info("No env files found")

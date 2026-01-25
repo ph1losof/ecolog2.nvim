@@ -104,32 +104,18 @@ function M.setup(lsp_config)
   -- Track if we've sent setRoot (only need to do it once per server instance)
   local root_sent = false
 
-  -- Build on_attach handler
-  local function on_attach(client, bufnr)
+  -- Server-level initialization (fires when LSP starts, no buffer required)
+  local function on_init(client, _init_result)
     state.set_client_id(client.id)
-    hooks.fire("on_lsp_attach", { client = client, bufnr = bufnr })
 
-    -- Send workspace root to LSP if we detected one and haven't sent it yet
-    if not root_sent and config.settings.workspace and config.settings.workspace.root then
-      root_sent = true
-      local lsp_commands = require("ecolog.lsp.commands")
-      lsp_commands.set_root(config.settings.workspace.root)
-    end
-
-    -- Query LSP state to populate statusline
+    -- Query LSP state to populate statusline (no buffer context)
     vim.schedule(function()
       local lsp_commands = require("ecolog.lsp.commands")
-      local current_file = vim.api.nvim_buf_get_name(bufnr)
 
-      lsp_commands.list_files(current_file, function(files)
-        if files and #files > 0 and #state.get_active_files() == 0 then
+      -- List files without file_path context
+      lsp_commands.list_files(nil, function(files)
+        if files and #files > 0 then
           state.set_active_files(files)
-        end
-      end)
-
-      lsp_commands.list_variables(current_file, function(vars)
-        if vars and #vars > 0 then
-          state.set_var_count(#vars)
         end
       end)
 
@@ -147,18 +133,11 @@ function M.setup(lsp_config)
       end)
 
       -- Sync interpolation state for statusline
-      -- If user configured it in init_options, explicitly send the command to LSP
-      -- (init_options may not be processed by all LSP versions)
       local init_opts = lsp_config.init_options or {}
       if init_opts.interpolation and init_opts.interpolation.enabled ~= nil then
         local desired_state = init_opts.interpolation.enabled
-        lsp_commands.set_interpolation(desired_state, function(success)
-          if success then
-            state.set_interpolation_enabled(desired_state)
-          else
-            -- Fallback: at least set the state even if command failed
-            state.set_interpolation_enabled(desired_state)
-          end
+        lsp_commands.set_interpolation(desired_state, function(_success)
+          state.set_interpolation_enabled(desired_state)
         end)
       else
         lsp_commands.get_interpolation(function(enabled)
@@ -168,9 +147,34 @@ function M.setup(lsp_config)
     end)
   end
 
+  -- Buffer-specific initialization (fires when buffer attaches to LSP)
+  local function on_attach(client, bufnr)
+    hooks.fire("on_lsp_attach", { client = client, bufnr = bufnr })
+
+    -- Send workspace root to LSP if we detected one and haven't sent it yet
+    if not root_sent and config.settings.workspace and config.settings.workspace.root then
+      root_sent = true
+      local lsp_commands = require("ecolog.lsp.commands")
+      lsp_commands.set_root(config.settings.workspace.root)
+    end
+
+    -- Query buffer-specific variable count
+    vim.schedule(function()
+      local lsp_commands = require("ecolog.lsp.commands")
+      local current_file = vim.api.nvim_buf_get_name(bufnr)
+
+      lsp_commands.list_variables(current_file, function(vars)
+        if vars and #vars > 0 then
+          state.set_var_count(#vars)
+        end
+      end)
+    end)
+  end
+
   -- Build setup options
   local setup_opts = {
     settings = config.settings,
+    on_init = on_init,
     on_attach = on_attach,
   }
 
@@ -203,12 +207,26 @@ function M.setup(lsp_config)
         init_options = config.init_options,
         settings = config.settings,
         capabilities = vim.lsp.protocol.make_client_capabilities(),
+        on_init = on_init,
         on_attach = on_attach,
       }, { bufnr = event.buf })
     end,
   })
 
-  -- Also attach to current buffer if it exists and is valid
+  -- Start the LSP immediately (without requiring a valid buffer)
+  -- This ensures the LSP is running even when Neovim starts with oil.nvim or similar
+  vim.lsp.start({
+    name = "ecolog",
+    cmd = config.cmd,
+    root_dir = config.settings.workspace and config.settings.workspace.root or vim.fn.getcwd(),
+    init_options = config.init_options,
+    settings = config.settings,
+    capabilities = vim.lsp.protocol.make_client_capabilities(),
+    on_init = on_init,
+    on_attach = on_attach,
+  })
+
+  -- Attach to current buffer if valid
   local current_buf = vim.api.nvim_get_current_buf()
   if should_attach(current_buf) then
     vim.lsp.start({
@@ -218,6 +236,7 @@ function M.setup(lsp_config)
       init_options = config.init_options,
       settings = config.settings,
       capabilities = vim.lsp.protocol.make_client_capabilities(),
+      on_init = on_init,
       on_attach = on_attach,
     }, { bufnr = current_buf })
   end

@@ -7,6 +7,39 @@ local hooks = require("ecolog.hooks")
 local api = vim.api
 local fn = vim.fn
 
+---Check if a path is a valid file path (not a special buffer like oil://)
+---@param path string
+---@return boolean
+local function is_valid_file_path(path)
+  if not path or path == "" then
+    return false
+  end
+  -- Skip special buffer schemes (oil://, fugitive://, etc.)
+  if path:match("^%w+://") then
+    return false
+  end
+  -- Skip buffers with special buftypes
+  local bufnr = fn.bufnr(path)
+  if bufnr ~= -1 then
+    local buftype = vim.bo[bufnr].buftype
+    if buftype ~= "" then
+      return false
+    end
+  end
+  return true
+end
+
+---Get a valid file path for LSP queries
+---Returns nil if the current buffer is not a regular file
+---@return string|nil
+function M.get_valid_file_path()
+  local path = api.nvim_buf_get_name(0)
+  if is_valid_file_path(path) then
+    return path
+  end
+  return nil
+end
+
 ---@type number|nil
 local original_winid = nil
 
