@@ -88,6 +88,8 @@ My personal setup using ecolog2.nvim with shelter.nvim for value masking. Includ
   keys = {
     { '<leader>ef', '<cmd>Ecolog files<cr>', desc = 'Ecolog toggle file module' },
     { '<leader>ev', '<cmd>Ecolog copy value<cr>', desc = 'Ecolog copy value' },
+    { '<leader>ege', '<cmd>Ecolog generate .env.example<cr>', desc = 'Ecolog generate .env.example' },
+    { '<leader>eg', '<cmd>Ecolog generate<cr>', desc = 'Ecolog generate' },
     { '<leader>es', '<cmd>Ecolog files select<cr>', desc = 'Ecolog select active file' },
     { '<leader>ei', '<cmd>Ecolog interpolation<cr>', desc = 'Ecolog toggle interpolation' },
     { '<leader>el', '<cmd>Ecolog list<cr>', desc = 'Ecolog list variables' },
@@ -98,8 +100,13 @@ My personal setup using ecolog2.nvim with shelter.nvim for value masking. Includ
     require('ecolog').setup {
       vim_env = true,
       statusline = {
-        sources = { enabled = true, show_disabled = true },
-        interpolation = { show_disabled = false },
+        sources = {
+          enabled = true,
+          show_disabled = true,
+        },
+        interpolation = {
+          show_disabled = false,
+        },
         highlights = {
           sources = 'String',
           sources_disabled = 'Comment',
@@ -108,16 +115,30 @@ My personal setup using ecolog2.nvim with shelter.nvim for value masking. Includ
         },
       },
       sort_var_fn = function(a, b)
-        -- Prioritize file variables over shell variables
         local a_is_shell = a.source == 'System Environment'
         local b_is_shell = b.source == 'System Environment'
-        if a_is_shell and not b_is_shell then return false end
-        if not a_is_shell and b_is_shell then return true end
+
+        if a_is_shell and not b_is_shell then
+          return false
+        end
+        if not a_is_shell and b_is_shell then
+          return true
+        end
+
         return a.name < b.name
       end,
       lsp = {
-        sources = { defaults = { shell = false, file = true } },
-        init_options = { interpolation = { enabled = false } },
+        sources = {
+          defaults = {
+            shell = false,
+            file = true,
+          },
+        },
+        init_options = {
+          interpolation = {
+            enabled = false,
+          },
+        },
       },
     }
   end,
