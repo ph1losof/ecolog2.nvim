@@ -7,37 +7,53 @@ local hooks = require("ecolog.hooks")
 local api = vim.api
 local fn = vim.fn
 
----Check if a path is a valid file path (not a special buffer like oil://)
+---Check if the current buffer represents a regular file
+---@return boolean
+local function is_file_buffer()
+  local bufnr = api.nvim_get_current_buf()
+
+  -- Special buftype means it's not a regular file buffer
+  -- (terminal, help, quickfix, prompt, nofile, nowrite, acwrite)
+  if vim.bo[bufnr].buftype ~= "" then
+    return false
+  end
+
+  return true
+end
+
+---Check if a path looks like a URI scheme (scheme://...)
+---Matches: oil://, fugitive://, neo-tree://, scp://, etc.
 ---@param path string
 ---@return boolean
-local function is_valid_file_path(path)
-  if not path or path == "" then
-    return false
-  end
-  -- Skip special buffer schemes (oil://, fugitive://, etc.)
-  if path:match("^%w+://") then
-    return false
-  end
-  -- Skip buffers with special buftypes
-  local bufnr = fn.bufnr(path)
-  if bufnr ~= -1 then
-    local buftype = vim.bo[bufnr].buftype
-    if buftype ~= "" then
-      return false
-    end
-  end
-  return true
+local function is_uri_scheme(path)
+  -- Match any non-whitespace characters followed by ://
+  -- This catches all plugin schemes including hyphenated ones
+  return path:match("^%S+://") ~= nil
 end
 
 ---Get a valid file path for LSP queries
 ---Returns nil if the current buffer is not a regular file
 ---@return string|nil
 function M.get_valid_file_path()
-  local path = api.nvim_buf_get_name(0)
-  if is_valid_file_path(path) then
-    return path
+  -- Check buftype first (most reliable indicator)
+  if not is_file_buffer() then
+    return nil
   end
-  return nil
+
+  local path = api.nvim_buf_get_name(0)
+
+  -- Empty buffer name (new unsaved buffer)
+  if path == "" then
+    return nil
+  end
+
+  -- URI scheme (oil://, fugitive://, neo-tree://, etc.)
+  -- Check this even for normal buftype as a safety net
+  if is_uri_scheme(path) then
+    return nil
+  end
+
+  return path
 end
 
 ---@type number|nil
