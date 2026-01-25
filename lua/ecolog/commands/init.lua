@@ -248,15 +248,33 @@ end
 function M.generate_example(opts)
   opts = opts or {}
 
+  -- If no output specified, prompt user interactively
+  if not opts.output then
+    vim.ui.input({
+      prompt = "Output path (or '-' for buffer): ",
+      default = ".env.example",
+      completion = "file",
+    }, function(input)
+      if input == nil or input == "" then
+        return -- User cancelled
+      end
+      M._do_generate_example(input)
+    end)
+    return
+  end
+
+  M._do_generate_example(opts.output)
+end
+
+---Internal: Execute the generate example command
+---@param output string The output path or "-" for buffer
+function M._do_generate_example(output)
   lsp_commands.generate_example(function(content, count)
     if count == 0 or content == "" then
       notify.info("No environment variables found in workspace")
       return
     end
 
-    local output = opts.output or ".env.example"
-
-    -- Open in new buffer or write to file
     if output == "-" then
       -- Open in scratch buffer
       vim.cmd("new")
