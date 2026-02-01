@@ -2,16 +2,11 @@
 ---Runtime state management for ecolog.nvim
 local M = {}
 
----@class EcologEnabledSources
----@field shell boolean Whether Shell source is enabled
----@field file boolean Whether File source is enabled
-
 ---@class EcologStateData
 ---@field active_files string[] Currently active env files
 ---@field var_count number Number of loaded variables
 ---@field client_id? number LSP client ID
 ---@field initialized boolean Whether the plugin is initialized
----@field enabled_sources? EcologEnabledSources Which sources are enabled (nil until synced from LSP)
 ---@field interpolation_enabled boolean Whether interpolation is enabled
 
 ---@type EcologStateData
@@ -20,7 +15,6 @@ local state = {
   var_count = 0,
   client_id = nil,
   initialized = false,
-  enabled_sources = nil, -- nil until synced from LSP
   interpolation_enabled = true,
 }
 
@@ -88,27 +82,10 @@ function M.set_initialized(initialized)
   state.initialized = initialized
 end
 
----Get enabled sources
----@return EcologEnabledSources|nil
-function M.get_enabled_sources()
-  return state.enabled_sources
-end
-
----Set enabled sources
----@param sources EcologEnabledSources|nil
-function M.set_enabled_sources(sources)
-  state.enabled_sources = sources -- No fallback, store what LSP says
-end
-
----Initialize enabled sources from config defaults
----@param defaults? EcologSourceDefaults
-function M.init_from_config(defaults)
-  if defaults then
-    state.enabled_sources = {
-      shell = defaults.shell ~= false,
-      file = defaults.file ~= false,
-    }
-  end
+---Check if LSP client is ready
+---@return boolean
+function M.is_ready()
+  return state.client_id ~= nil
 end
 
 ---Get interpolation enabled state
@@ -130,7 +107,6 @@ function M.reset()
     var_count = 0,
     client_id = nil,
     initialized = false,
-    enabled_sources = nil, -- nil until synced from LSP
     interpolation_enabled = true,
   }
 end

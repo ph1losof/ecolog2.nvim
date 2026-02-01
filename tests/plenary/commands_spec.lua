@@ -22,7 +22,6 @@ describe("commands module", function()
     state.set_client_id(1)
     state.set_var_count(4)
     state.set_active_files({ ".env" })
-    state.set_enabled_sources({ shell = true, file = true })
   end)
 
   after_each(function()

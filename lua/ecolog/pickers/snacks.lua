@@ -322,7 +322,17 @@ function M.pick_sources(opts)
         picker:close()
         -- Query LSP for fresh state before toggling to avoid stale data issues
         lsp_commands.list_sources(function(fresh_sources)
+          local old_sources = { shell = false, file = false }
           local new_sources = {}
+
+          -- Build old_sources from fresh state
+          for _, s in ipairs(fresh_sources) do
+            local key = s.name:lower()
+            if old_sources[key] ~= nil then
+              old_sources[key] = s.enabled
+            end
+          end
+
           for _, s in ipairs(fresh_sources) do
             if s.name == item.name then
               -- Toggle this one
@@ -336,7 +346,7 @@ function M.pick_sources(opts)
           if opts.on_select then
             opts.on_select(new_sources)
           else
-            lsp_commands.set_sources(new_sources)
+            lsp_commands.set_sources(new_sources, old_sources)
           end
         end)
       end,

@@ -119,21 +119,22 @@ function M.setup(lsp_config)
         end
       end)
 
-      lsp_commands.list_sources(function(sources)
-        if sources and #sources > 0 then
-          local enabled = { shell = false, file = false }
-          for _, src in ipairs(sources) do
-            local key = src.name:lower()
-            if enabled[key] ~= nil then
-              enabled[key] = src.enabled
-            end
-          end
-          state.set_enabled_sources(enabled)
+      -- Sync source defaults if configured (silent sync, no old_sources = no notification)
+      local init_opts = lsp_config.init_options or {}
+      if init_opts.sources and init_opts.sources.defaults then
+        local source_defaults = init_opts.sources.defaults
+        local enabled_sources = {}
+        if source_defaults.shell ~= false then
+          table.insert(enabled_sources, "Shell")
         end
-      end)
+        if source_defaults.file ~= false then
+          table.insert(enabled_sources, "File")
+        end
+        -- Silent sync: no old_sources means no notification
+        lsp_commands.set_sources(enabled_sources)
+      end
 
       -- Sync interpolation state for statusline
-      local init_opts = lsp_config.init_options or {}
       if init_opts.interpolation and init_opts.interpolation.enabled ~= nil then
         local desired_state = init_opts.interpolation.enabled
         lsp_commands.set_interpolation(desired_state, function(_success)

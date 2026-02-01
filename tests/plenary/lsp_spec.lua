@@ -94,23 +94,6 @@ describe("lsp.commands module", function()
   end)
 
   describe("set_sources", function()
-    it("should update enabled sources state", function()
-      state.set_enabled_sources({ shell = true, file = true })
-
-      local callback_called = false
-      lsp_commands.set_sources({ "File" }, function(success)
-        callback_called = true
-      end)
-
-      _G.wait_for(function()
-        return callback_called
-      end)
-
-      local sources = state.get_enabled_sources()
-      assert.is_false(sources.shell)
-      assert.is_true(sources.file)
-    end)
-
     it("should set count to 0 when all sources disabled", function()
       state.set_var_count(10)
 

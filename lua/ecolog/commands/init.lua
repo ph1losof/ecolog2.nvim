@@ -16,8 +16,13 @@ local function toggle_source(source_name)
   lsp_commands.list_sources(function(sources)
     local enabled_sources = {}
     local is_currently_enabled = false
+    local old_sources = { shell = false, file = false }
 
     for _, s in ipairs(sources) do
+      local key = s.name:lower()
+      if old_sources[key] ~= nil then
+        old_sources[key] = s.enabled
+      end
       if s.name == source_name then
         is_currently_enabled = s.enabled
       elseif s.enabled then
@@ -30,7 +35,7 @@ local function toggle_source(source_name)
       table.insert(enabled_sources, source_name)
     end
 
-    lsp_commands.set_sources(enabled_sources)
+    lsp_commands.set_sources(enabled_sources, old_sources)
   end)
 end
 
@@ -40,8 +45,13 @@ local function enable_source(source_name)
   lsp_commands.list_sources(function(sources)
     local enabled_sources = {}
     local already_enabled = false
+    local old_sources = { shell = false, file = false }
 
     for _, s in ipairs(sources) do
+      local key = s.name:lower()
+      if old_sources[key] ~= nil then
+        old_sources[key] = s.enabled
+      end
       if s.enabled then
         table.insert(enabled_sources, s.name)
         if s.name == source_name then
@@ -56,7 +66,7 @@ local function enable_source(source_name)
     end
 
     table.insert(enabled_sources, source_name)
-    lsp_commands.set_sources(enabled_sources)
+    lsp_commands.set_sources(enabled_sources, old_sources)
   end)
 end
 
@@ -66,8 +76,13 @@ local function disable_source(source_name)
   lsp_commands.list_sources(function(sources)
     local enabled_sources = {}
     local was_enabled = false
+    local old_sources = { shell = false, file = false }
 
     for _, s in ipairs(sources) do
+      local key = s.name:lower()
+      if old_sources[key] ~= nil then
+        old_sources[key] = s.enabled
+      end
       if s.enabled then
         if s.name == source_name then
           was_enabled = true
@@ -82,7 +97,7 @@ local function disable_source(source_name)
       return
     end
 
-    lsp_commands.set_sources(enabled_sources)
+    lsp_commands.set_sources(enabled_sources, old_sources)
   end)
 end
 

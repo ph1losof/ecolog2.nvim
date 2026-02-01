@@ -1,5 +1,6 @@
 -- Statusline tests
 -- Tests statusline rendering and formatting
+-- Note: Source state is now cached from LSP queries, not local state
 ---@diagnostic disable: undefined-global
 
 describe("statusline module", function()
@@ -13,10 +14,9 @@ describe("statusline module", function()
     statusline = require("ecolog.statusline")
     state = require("ecolog.state")
 
-    -- Set up initial state
+    -- Set up initial state (only things still in local state)
     state.set_var_count(42)
     state.set_active_files({ ".env", ".env.local" })
-    state.set_enabled_sources({ shell = true, file = true })
   end)
 
   describe("get_status", function()
@@ -67,21 +67,10 @@ describe("statusline module", function()
     end)
   end)
 
-  describe("source indicators", function()
-    it("should show when shell source is enabled", function()
-      state.set_enabled_sources({ shell = true, file = false })
-      local status = statusline.get_status()
-      assert.is_string(status)
-    end)
-
-    it("should show when file source is enabled", function()
-      state.set_enabled_sources({ shell = false, file = true })
-      local status = statusline.get_status()
-      assert.is_string(status)
-    end)
-
-    it("should handle all sources disabled", function()
-      state.set_enabled_sources({ shell = false, file = false })
+  describe("cache invalidation", function()
+    it("should invalidate cache", function()
+      statusline.invalidate_cache()
+      -- Should not error
       local status = statusline.get_status()
       assert.is_string(status)
     end)

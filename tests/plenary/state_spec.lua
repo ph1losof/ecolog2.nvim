@@ -59,26 +59,6 @@ describe("state module", function()
     end)
   end)
 
-  describe("enabled_sources", function()
-    it("should set and get enabled sources", function()
-      local sources = { shell = true, file = false }
-      state.set_enabled_sources(sources)
-      assert.are.same(sources, state.get_enabled_sources())
-    end)
-
-    it("should default to nil until synced from LSP", function()
-      local sources = state.get_enabled_sources()
-      assert.is_nil(sources)
-    end)
-
-    it("should handle all sources disabled", function()
-      state.set_enabled_sources({ shell = false, file = false })
-      local sources = state.get_enabled_sources()
-      assert.is_false(sources.shell)
-      assert.is_false(sources.file)
-    end)
-  end)
-
   describe("is_ready", function()
     it("should return false when client not set", function()
       assert.is_false(state.is_ready())

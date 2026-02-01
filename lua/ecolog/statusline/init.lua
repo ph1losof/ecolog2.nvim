@@ -1,20 +1,11 @@
 ---@class EcologStatusline
----Generic statusline component with highlight and caching support
+---Generic statusline component with highlight support
 local M = {}
 
 local state = require("ecolog.state")
 
--- Compatibility layer for uv
-local uv = vim.uv or vim.loop
-
 -- Module-level config (set by setup or from config module)
 local config = nil
-
--- Cache
-local status_cache = {
-  last_update = 0,
-  data = nil,
-}
 
 -- Highlight utilities
 local hl = {}
@@ -157,7 +148,7 @@ function hl.format_with_hl(text, hl_spec)
 end
 
 ---Format sources display string
----@param sources EcologEnabledSources|nil The enabled sources
+---@param sources {shell: boolean, file: boolean}|nil The enabled sources
 ---@return string Formatted sources string
 local function format_sources(sources)
   local cfg = M._get_config()
@@ -246,28 +237,36 @@ local function format_interpolation()
   return ""
 end
 
----Get cached status data
+---Get fresh status data (no caching)
 ---@return table Status data with file, files, vars_count, has_env_file, sources
-local function get_cached_status()
-  local now = uv.now()
-  if status_cache.data and (now - status_cache.last_update) < 1000 then
-    return status_cache.data
-  end
-
+local function get_status_data()
   local lsp = require("ecolog.lsp")
   local client = lsp.get_client()
 
+  -- Build sources from LSP synchronously
+  local sources = nil
+  if client then
+    -- Use synchronous query for sources
+    local result = lsp.execute_command("ecolog.source.list", {})
+    if result and result.sources then
+      sources = { shell = false, file = false }
+      for _, src in ipairs(result.sources) do
+        local key = src.name:lower()
+        if sources[key] ~= nil then
+          sources[key] = src.enabled
+        end
+      end
+    end
+  end
+
   if not client then
-    local status = {
+    return {
       file = nil,
       files = {},
       vars_count = 0,
       has_env_file = false,
-      sources = state.get_enabled_sources(),
+      sources = sources,
     }
-    status_cache.data = status
-    status_cache.last_update = now
-    return status
   end
 
   local active_files = state.get_active_files()
@@ -279,17 +278,13 @@ local function get_cached_status()
     end
   end
 
-  local status = {
+  return {
     file = filename,
     files = active_files,
     vars_count = state.get_var_count(),
     has_env_file = #active_files > 0,
-    sources = state.get_enabled_sources(),
+    sources = sources,
   }
-
-  status_cache.data = status
-  status_cache.last_update = now
-  return status
 end
 
 ---Setup statusline module with configuration
@@ -303,9 +298,6 @@ function M.setup(opts)
   -- Setup highlight groups
   hl.setup_highlights()
 
-  -- Invalidate cache
-  M.invalidate_cache()
-
   -- ColorScheme autocmd to refresh highlights on theme change
   vim.api.nvim_create_autocmd("ColorScheme", {
     group = vim.api.nvim_create_augroup("EcologStatuslineHighlights", { clear = true }),
@@ -315,19 +307,16 @@ function M.setup(opts)
   })
 end
 
----Invalidate the status cache
+---Invalidate cache (no-op, kept for API compatibility)
 function M.invalidate_cache()
-  status_cache = {
-    data = nil,
-    last_update = 0,
-  }
+  -- No caching, nothing to invalidate
 end
 
 ---Get statusline string with highlights (for generic statusline)
 ---@return string
 function M.get_statusline()
   local cfg = M._get_config()
-  local status = get_cached_status()
+  local status = get_status_data()
 
   -- Hidden mode: return empty if no env variables from any source
   if cfg.hidden_mode and status.vars_count == 0 then
@@ -507,10 +496,10 @@ function M._get_hl()
   return hl
 end
 
----Get cached status (internal use)
+---Get fresh status (internal use)
 ---@return table
 function M._get_cached_status()
-  return get_cached_status()
+  return get_status_data()
 end
 
 return M

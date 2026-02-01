@@ -1,5 +1,6 @@
 -- Integration tests for statusline state updates
--- Tests source enable/disable, file switching, and file deletion scenarios
+-- Tests file switching and file deletion scenarios
+-- Note: Source state is now managed by statusline cache, not local state
 ---@diagnostic disable: undefined-global
 
 local state = require("ecolog.state")
@@ -11,7 +12,6 @@ describe("statusline state management", function()
     -- Reset state before each test
     state.set_active_files({})
     state.set_var_count(0)
-    state.set_enabled_sources({ shell = true, file = true })
     state.set_client_id(1) -- Mock client ID
 
     -- Store original function
@@ -29,26 +29,22 @@ describe("statusline state management", function()
     it("should have default values", function()
       state.set_active_files({})
       state.set_var_count(0)
-      state.set_enabled_sources({ shell = true, file = true })
 
       assert.are.same({}, state.get_active_files())
       assert.are.equal(0, state.get_var_count())
-      assert.are.same({ shell = true, file = true }, state.get_enabled_sources())
     end)
 
     it("should persist values after setting", function()
       state.set_active_files({ "/path/to/.env", "/path/to/.env.local" })
       state.set_var_count(42)
-      state.set_enabled_sources({ shell = false, file = true })
 
       assert.are.same({ "/path/to/.env", "/path/to/.env.local" }, state.get_active_files())
       assert.are.equal(42, state.get_var_count())
-      assert.are.same({ shell = false, file = true }, state.get_enabled_sources())
     end)
   end)
 
   describe("set_sources command", function()
-    it("should update enabled sources state", function()
+    it("should update variable count after source change", function()
       local commands = require("ecolog.lsp.commands")
       local lsp = require("ecolog.lsp")
 
@@ -78,11 +74,10 @@ describe("statusline state management", function()
 
       -- Initial state: 25 vars
       state.set_var_count(25)
-      state.set_enabled_sources({ shell = true, file = true })
 
-      -- Disable shell source
+      -- Disable shell source (pass old_sources for notification)
       local callback_called = false
-      commands.set_sources({ "File" }, function(success)
+      commands.set_sources({ "File" }, { shell = true, file = true }, function(success)
         callback_called = true
         assert.is_true(success)
       end)
@@ -91,11 +86,6 @@ describe("statusline state management", function()
       vim.wait(100, function()
         return callback_called
       end)
-
-      -- Verify state was updated
-      local sources = state.get_enabled_sources()
-      assert.is_false(sources.shell)
-      assert.is_true(sources.file)
 
       -- Variable count should be updated (not 0, but 15 from File source)
       assert.are.equal(15, state.get_var_count())
@@ -174,10 +164,6 @@ describe("statusline state management", function()
 
       -- Count should be 0 when all sources disabled (plugin workaround)
       assert.are.equal(0, state.get_var_count())
-
-      local sources = state.get_enabled_sources()
-      assert.is_false(sources.shell)
-      assert.is_false(sources.file)
     end)
 
     it("should not set count to 0 when LSP returns error", function()
@@ -248,7 +234,7 @@ describe("statusline state management", function()
   end)
 
   describe("refresh_state command", function()
-    it("should refresh all state data", function()
+    it("should refresh files and variables", function()
       local commands = require("ecolog.lsp.commands")
       local lsp = require("ecolog.lsp")
 
@@ -266,21 +252,12 @@ describe("statusline state management", function()
             table.insert(vars, { name = "VAR_" .. i, value = "val" .. i })
           end
           callback(nil, { variables = vars })
-        elseif command == "ecolog.source.list" then
-          callback(nil, {
-            sources = {
-              { name = "Shell", enabled = true, priority = 1 },
-              { name = "File", enabled = true, priority = 2 },
-              { name = "Remote", enabled = false, priority = 3 },
-            },
-          })
         end
       end
 
       -- Set initial state
       state.set_active_files({})
       state.set_var_count(0)
-      state.set_enabled_sources({ shell = false, file = false })
 
       local callback_called = false
       commands.refresh_state(nil, function()
@@ -291,10 +268,9 @@ describe("statusline state management", function()
         return callback_called
       end)
 
-      -- Verify all state was refreshed
+      -- Verify files and vars were refreshed
       assert.are.same({ "/path/.env", "/path/.env.local" }, state.get_active_files())
       assert.are.equal(8, state.get_var_count())
-      assert.are.same({ shell = true, file = true }, state.get_enabled_sources())
     end)
 
     it("should clear state when no files found", function()
@@ -310,8 +286,6 @@ describe("statusline state management", function()
           callback(nil, { files = {} }) -- No files
         elseif command == "ecolog.listEnvVariables" then
           callback(nil, { variables = {} }) -- No vars
-        elseif command == "ecolog.source.list" then
-          callback(nil, { sources = {} })
         end
       end
 
@@ -364,7 +338,6 @@ describe("statusline state management", function()
 
       -- Initial state with shell enabled
       state.set_var_count(25)
-      state.set_enabled_sources({ shell = true, file = true })
 
       -- Disable shell
       commands.set_sources({ "File" }, function() end)
@@ -372,7 +345,6 @@ describe("statusline state management", function()
         return state.get_var_count() == 15
       end)
       assert.are.equal(15, state.get_var_count())
-      assert.is_false(state.get_enabled_sources().shell)
 
       -- Re-enable shell
       commands.set_sources({ "Shell", "File" }, function() end)
@@ -380,7 +352,6 @@ describe("statusline state management", function()
         return state.get_var_count() == 25
       end)
       assert.are.equal(25, state.get_var_count())
-      assert.is_true(state.get_enabled_sources().shell)
     end)
   end)
 end)

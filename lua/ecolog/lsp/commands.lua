@@ -7,7 +7,7 @@ local hooks = require("ecolog.hooks")
 local state = require("ecolog.state")
 local notify = require("ecolog.notification_manager")
 
----Refresh all statusline state (files, variables, sources)
+---Refresh all statusline state (files, variables)
 ---Call this when env files change, are deleted, or need manual refresh
 ---@param file_path? string Optional file path for context
 ---@param callback? fun() Optional callback when refresh is complete
@@ -20,11 +20,11 @@ function M.refresh_state(file_path, callback)
     return
   end
 
-  local pending = 3
+  local pending = 2
   local function done()
     pending = pending - 1
     if pending == 0 then
-      -- Invalidate statusline cache
+      -- Invalidate statusline cache (this will trigger sources refresh too)
       local statusline_ok, statusline = pcall(require, "ecolog.statusline")
       if statusline_ok and statusline.invalidate_cache then
         statusline.invalidate_cache()
@@ -48,21 +48,6 @@ function M.refresh_state(file_path, callback)
   -- Refresh variable count
   -- Note: list_variables updates state.var_count internally on success
   M.list_variables(file_path, function()
-    done()
-  end)
-
-  -- Refresh enabled sources
-  M.list_sources(function(sources)
-    if sources and #sources > 0 then
-      local enabled = { shell = false, file = false }
-      for _, src in ipairs(sources) do
-        local key = src.name:lower()
-        if enabled[key] ~= nil then
-          enabled[key] = src.enabled
-        end
-      end
-      state.set_enabled_sources(enabled)
-    end
     done()
   end)
 end
@@ -381,11 +366,14 @@ end
 
 ---Set the source precedence (enable/disable sources)
 ---@param sources string[] Array of source names to enable (e.g., {"Shell", "File"})
+---@param old_sources? {shell: boolean, file: boolean} Previous state for notifications
 ---@param callback? fun(success: boolean)
-function M.set_sources(sources, callback)
-  -- Capture current state before change for intuitive notifications
-  -- old_sources may be nil on first call if state hasn't synced from LSP yet
-  local old_sources = state.get_enabled_sources() or {}
+function M.set_sources(sources, old_sources, callback)
+  -- Handle backwards compat: if old_sources is a function, it's the callback
+  if type(old_sources) == "function" then
+    callback = old_sources
+    old_sources = nil
+  end
 
   lsp.execute_command("ecolog.source.setPrecedence", sources, function(err, result)
     local success = not err and result and result.success
@@ -395,7 +383,7 @@ function M.set_sources(sources, callback)
     end
 
     if success then
-      -- Update state with new sources and refresh statusline
+      -- Query updated sources for notifications
       M.list_sources(function(updated_sources)
         local enabled = { shell = false, file = false }
         local any_enabled = false
@@ -410,44 +398,39 @@ function M.set_sources(sources, callback)
               end
             end
           end
-          state.set_enabled_sources(enabled)
         end
 
-        -- Generate intuitive notification message
-        local changes = {}
-        local source_names = { shell = "Shell", file = "File" }
-        for key, name in pairs(source_names) do
-          local was_enabled = old_sources[key]
-          local is_enabled = enabled[key]
-          if was_enabled ~= is_enabled then
-            table.insert(changes, name .. (is_enabled and " enabled" or " disabled"))
+        -- Generate notification if old_sources provided
+        if old_sources then
+          local changes = {}
+          local source_names = { shell = "Shell", file = "File" }
+          for key, name in pairs(source_names) do
+            local was_enabled = old_sources[key]
+            local is_enabled = enabled[key]
+            if was_enabled ~= is_enabled then
+              table.insert(changes, name .. (is_enabled and " enabled" or " disabled"))
+            end
+          end
+          if #changes > 0 then
+            notify.info(table.concat(changes, ", "))
           end
         end
 
-        if #changes > 0 then
-          notify.info(table.concat(changes, ", "))
+        -- Invalidate statusline cache
+        local statusline_ok, statusline = pcall(require, "ecolog.statusline")
+        if statusline_ok and statusline.invalidate_cache then
+          statusline.invalidate_cache()
         end
 
-        -- If no sources are enabled, set count to 0 (workaround for LSP bug)
+        -- Handle no sources enabled
         if not any_enabled then
           state.set_var_count(0)
-          local statusline_ok, statusline = pcall(require, "ecolog.statusline")
-          if statusline_ok and statusline.invalidate_cache then
-            statusline.invalidate_cache()
-          end
           return
         end
 
-        -- Re-query variable count (sources affect which variables are available)
-        -- Note: list_variables updates state.var_count internally on success
+        -- Re-query variable count
         local current_file = vim.api.nvim_buf_get_name(0)
-        M.list_variables(current_file ~= "" and current_file or nil, function()
-          -- Invalidate statusline cache to reflect changes
-          local statusline_ok, statusline = pcall(require, "ecolog.statusline")
-          if statusline_ok and statusline.invalidate_cache then
-            statusline.invalidate_cache()
-          end
-        end)
+        M.list_variables(current_file ~= "" and current_file or nil, function() end)
       end)
     elseif result and result.error then
       notify.error(result.error)
