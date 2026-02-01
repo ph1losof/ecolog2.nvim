@@ -217,35 +217,38 @@ function M.pick_sources(opts)
             return
           end
 
-          local new_sources = {}
-          if #selected == 1 then
-            -- Toggle single item
-            local source = entry_map[selected[1]]
-            for _, s in ipairs(sources) do
-              if s.name == source.name then
-                -- Toggle this one
-                if not s.enabled then
+          -- Query LSP for fresh state before toggling to avoid stale data issues
+          lsp_commands.list_sources(function(fresh_sources)
+            local new_sources = {}
+            if #selected == 1 then
+              -- Toggle single item
+              local source = entry_map[selected[1]]
+              for _, s in ipairs(fresh_sources) do
+                if s.name == source.name then
+                  -- Toggle this one
+                  if not s.enabled then
+                    table.insert(new_sources, s.name)
+                  end
+                elseif s.enabled then
                   table.insert(new_sources, s.name)
                 end
-              elseif s.enabled then
-                table.insert(new_sources, s.name)
+              end
+            else
+              -- Use multi-selection as the new enabled set
+              for _, entry in ipairs(selected) do
+                local source = entry_map[entry]
+                if source then
+                  table.insert(new_sources, source.name)
+                end
               end
             end
-          else
-            -- Use multi-selection as the new enabled set
-            for _, entry in ipairs(selected) do
-              local source = entry_map[entry]
-              if source then
-                table.insert(new_sources, source.name)
-              end
-            end
-          end
 
-          if opts.on_select then
-            opts.on_select(new_sources)
-          else
-            lsp_commands.set_sources(new_sources)
-          end
+            if opts.on_select then
+              opts.on_select(new_sources)
+            else
+              lsp_commands.set_sources(new_sources)
+            end
+          end)
         end,
       },
     })

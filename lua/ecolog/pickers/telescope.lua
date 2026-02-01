@@ -334,37 +334,40 @@ function M.pick_sources(opts)
           actions.select_default:replace(function()
             local picker = action_state.get_current_picker(prompt_bufnr)
             local multi_selection = picker:get_multi_selection()
-
-            local new_sources = {}
-            if #multi_selection > 0 then
-              -- Use multi-selection as the new enabled set
-              for _, entry in ipairs(multi_selection) do
-                table.insert(new_sources, entry.name)
-              end
-            else
-              -- Toggle single item
-              local selection = action_state.get_selected_entry()
-              if selection then
-                for _, s in ipairs(sources) do
-                  if s.name == selection.name then
-                    -- Toggle this one
-                    if not s.enabled then
-                      table.insert(new_sources, s.name)
-                    end
-                  elseif s.enabled then
-                    table.insert(new_sources, s.name)
-                  end
-                end
-              end
-            end
+            local selection = action_state.get_selected_entry()
 
             actions.close(prompt_bufnr)
 
-            if opts.on_select then
-              opts.on_select(new_sources)
-            else
-              lsp_commands.set_sources(new_sources)
-            end
+            -- Query LSP for fresh state before toggling to avoid stale data issues
+            lsp_commands.list_sources(function(fresh_sources)
+              local new_sources = {}
+              if #multi_selection > 0 then
+                -- Use multi-selection as the new enabled set
+                for _, entry in ipairs(multi_selection) do
+                  table.insert(new_sources, entry.name)
+                end
+              else
+                -- Toggle single item
+                if selection then
+                  for _, s in ipairs(fresh_sources) do
+                    if s.name == selection.name then
+                      -- Toggle this one
+                      if not s.enabled then
+                        table.insert(new_sources, s.name)
+                      end
+                    elseif s.enabled then
+                      table.insert(new_sources, s.name)
+                    end
+                  end
+                end
+              end
+
+              if opts.on_select then
+                opts.on_select(new_sources)
+              else
+                lsp_commands.set_sources(new_sources)
+              end
+            end)
           end)
 
           return true

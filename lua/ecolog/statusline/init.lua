@@ -157,11 +157,16 @@ function hl.format_with_hl(text, hl_spec)
 end
 
 ---Format sources display string
----@param sources EcologEnabledSources The enabled sources
+---@param sources EcologEnabledSources|nil The enabled sources
 ---@return string Formatted sources string
 local function format_sources(sources)
   local cfg = M._get_config()
   if not cfg.sources or not cfg.sources.enabled then
+    return ""
+  end
+
+  -- Handle nil sources gracefully (not yet synced from LSP)
+  if not sources then
     return ""
   end
 

@@ -11,7 +11,7 @@ local M = {}
 ---@field var_count number Number of loaded variables
 ---@field client_id? number LSP client ID
 ---@field initialized boolean Whether the plugin is initialized
----@field enabled_sources EcologEnabledSources Which sources are enabled
+---@field enabled_sources? EcologEnabledSources Which sources are enabled (nil until synced from LSP)
 ---@field interpolation_enabled boolean Whether interpolation is enabled
 
 ---@type EcologStateData
@@ -20,7 +20,7 @@ local state = {
   var_count = 0,
   client_id = nil,
   initialized = false,
-  enabled_sources = { shell = true, file = true },
+  enabled_sources = nil, -- nil until synced from LSP
   interpolation_enabled = true,
 }
 
@@ -89,15 +89,15 @@ function M.set_initialized(initialized)
 end
 
 ---Get enabled sources
----@return EcologEnabledSources
+---@return EcologEnabledSources|nil
 function M.get_enabled_sources()
   return state.enabled_sources
 end
 
 ---Set enabled sources
----@param sources EcologEnabledSources
+---@param sources EcologEnabledSources|nil
 function M.set_enabled_sources(sources)
-  state.enabled_sources = sources or { shell = true, file = true }
+  state.enabled_sources = sources -- No fallback, store what LSP says
 end
 
 ---Initialize enabled sources from config defaults
@@ -130,7 +130,7 @@ function M.reset()
     var_count = 0,
     client_id = nil,
     initialized = false,
-    enabled_sources = { shell = true, file = true },
+    enabled_sources = nil, -- nil until synced from LSP
     interpolation_enabled = true,
   }
 end

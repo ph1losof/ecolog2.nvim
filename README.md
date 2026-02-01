@@ -73,6 +73,8 @@ That's it! The plugin auto-detects and starts the LSP, attaches to all buffers, 
 
 **Requirements:** Neovim 0.10+ (0.11+ recommended), Rust/Cargo for the LSP binary.
 
+**Performance:** The plugin is a thin Lua wrapper over ecolog-lsp. It adds virtually no overhead to your Neovim startup time - the LSP spawns asynchronously and all heavy lifting happens in a separate process.
+
 ---
 
 ## Author's Configuration
@@ -440,7 +442,7 @@ ttl = 300
 </details>
 
 <details>
-<summary><strong>Architecture</strong></summary>
+<summary><strong>Architecture & Performance</strong></summary>
 
 This plugin is the **LSP client** for [ecolog-lsp](https://github.com/ph1losof/ecolog-lsp), which provides analysis using tree-sitter.
 
@@ -450,6 +452,19 @@ This plugin is the **LSP client** for [ecolog-lsp](https://github.com/ph1losof/e
 | Completion    | LSP `textDocument/completion` | Custom completion source     |
 | Languages     | 5 languages via LSP           | Per-language regex providers |
 | Extensibility | Hooks system                  | Direct configuration         |
+
+**Why this is fast:**
+
+The Neovim plugin is intentionally minimal - it's a thin Lua wrapper that:
+- Configures and spawns the LSP process
+- Provides commands and pickers for user interaction
+- Manages statusline integration
+
+All the heavy work (tree-sitter parsing, env file watching, variable resolution, cross-file analysis) runs in the **ecolog-lsp** process, completely separate from your Neovim instance. This means:
+
+- **Near-zero startup impact** - The plugin just registers a few autocommands and the LSP spawns asynchronously
+- **No editor blocking** - File parsing and analysis never freeze your Neovim
+- **Memory isolation** - The LSP's memory usage doesn't affect Neovim's footprint
 
 </details>
 

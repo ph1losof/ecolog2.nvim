@@ -73,12 +73,11 @@ test("state: get active file returns nil when empty", function()
   assert_equal(nil, state.get_active_file(), "active file when empty")
 end)
 
--- Test that setting empty sources doesn't crash
-test("state: set empty sources uses default", function()
+-- Test that setting nil sources stores nil (no local defaults)
+test("state: set nil sources keeps nil", function()
   state.set_enabled_sources(nil)
   local sources = state.get_enabled_sources()
-  assert_equal(true, sources.shell, "shell default")
-  assert_equal(true, sources.file, "file default")
+  assert_equal(nil, sources, "sources should be nil until synced from LSP")
 end)
 
 print("\n=== Tests complete ===")

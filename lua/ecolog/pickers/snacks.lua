@@ -319,24 +319,26 @@ function M.pick_sources(opts)
         if not item then
           return
         end
-        -- Toggle single item
-        local new_sources = {}
-        for _, s in ipairs(sources) do
-          if s.name == item.name then
-            -- Toggle this one
-            if not s.enabled then
+        picker:close()
+        -- Query LSP for fresh state before toggling to avoid stale data issues
+        lsp_commands.list_sources(function(fresh_sources)
+          local new_sources = {}
+          for _, s in ipairs(fresh_sources) do
+            if s.name == item.name then
+              -- Toggle this one
+              if not s.enabled then
+                table.insert(new_sources, s.name)
+              end
+            elseif s.enabled then
               table.insert(new_sources, s.name)
             end
-          elseif s.enabled then
-            table.insert(new_sources, s.name)
           end
-        end
-        picker:close()
-        if opts.on_select then
-          opts.on_select(new_sources)
-        else
-          lsp_commands.set_sources(new_sources)
-        end
+          if opts.on_select then
+            opts.on_select(new_sources)
+          else
+            lsp_commands.set_sources(new_sources)
+          end
+        end)
       end,
     })
   end)

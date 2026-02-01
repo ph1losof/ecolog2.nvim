@@ -66,10 +66,9 @@ describe("state module", function()
       assert.are.same(sources, state.get_enabled_sources())
     end)
 
-    it("should default to shell and file enabled", function()
+    it("should default to nil until synced from LSP", function()
       local sources = state.get_enabled_sources()
-      assert.is_true(sources.shell)
-      assert.is_true(sources.file)
+      assert.is_nil(sources)
     end)
 
     it("should handle all sources disabled", function()

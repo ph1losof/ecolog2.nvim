@@ -384,7 +384,8 @@ end
 ---@param callback? fun(success: boolean)
 function M.set_sources(sources, callback)
   -- Capture current state before change for intuitive notifications
-  local old_sources = state.get_enabled_sources()
+  -- old_sources may be nil on first call if state hasn't synced from LSP yet
+  local old_sources = state.get_enabled_sources() or {}
 
   lsp.execute_command("ecolog.source.setPrecedence", sources, function(err, result)
     local success = not err and result and result.success
