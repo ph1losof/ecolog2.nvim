@@ -61,18 +61,28 @@ function M.setup(opts)
     desc = "Ecolog: Refresh statusline on env file changes",
   })
 
-  -- Cleanup vim.env on exit (optional, vars are cleared on exit anyway)
-  if config.get_vim_env() then
-    vim.api.nvim_create_autocmd("VimLeavePre", {
-      group = augroup,
-      callback = function()
+  -- Stop LSP and cleanup on exit
+  vim.api.nvim_create_autocmd("VimLeavePre", {
+    group = augroup,
+    callback = function()
+      -- Set exiting flag first to prevent any pending operations
+      state.set_exiting(true)
+
+      -- Stop LSP client to ensure clean shutdown
+      local lsp = require("ecolog.lsp")
+      lsp.stop(true)
+
+      -- Clear vim.env if enabled
+      if config.get_vim_env() then
         local vim_env = require("ecolog.vim_env")
         vim_env.clear()
-      end,
-      desc = "Ecolog: Clear vim.env on exit",
-    })
+      end
+    end,
+    desc = "Ecolog: Stop LSP and cleanup on exit",
+  })
 
-    -- Initial vim.env sync after LSP is ready
+  -- Initial vim.env sync after LSP is ready (if enabled)
+  if config.get_vim_env() then
     vim.defer_fn(function()
       local lsp_commands = require("ecolog.lsp.commands")
       lsp_commands.list_variables(nil, function() end)

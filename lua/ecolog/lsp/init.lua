@@ -144,6 +144,14 @@ end
 ---@param callback? fun(err: any, result: any) Callback for async execution
 ---@return any|nil result Synchronous result (if no callback)
 function M.execute_command(command, args, callback)
+  -- Early return if Neovim is exiting to avoid blocking sync requests
+  if state.is_exiting() then
+    if callback then
+      callback(nil, nil)
+    end
+    return nil
+  end
+
   local client = M.get_client()
   if not client then
     notify.warn("LSP not running")
@@ -169,6 +177,17 @@ function M.execute_command(command, args, callback)
     end
     return result and result.result
   end
+end
+
+---Stop the LSP client
+---@param force? boolean Force immediate stop (default: true)
+function M.stop(force)
+  local client = M.get_client()
+  if not client then
+    return
+  end
+  state.set_client_id(nil)
+  vim.lsp.stop_client(client.id, force ~= false)
 end
 
 ---Restart the LSP client

@@ -220,6 +220,10 @@ end
 ---@param bufnr? number
 ---@param callback fun(var: EcologVariable|nil)
 function M.get_variable_at_cursor(bufnr, callback)
+  if state.is_exiting() then
+    callback(nil)
+    return
+  end
   bufnr = bufnr or vim.api.nvim_get_current_buf()
 
   local client = lsp.get_client()

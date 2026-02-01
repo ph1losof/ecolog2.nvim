@@ -8,6 +8,7 @@ local M = {}
 ---@field client_id? number LSP client ID
 ---@field initialized boolean Whether the plugin is initialized
 ---@field interpolation_enabled boolean Whether interpolation is enabled
+---@field exiting boolean Whether Neovim is exiting
 
 ---@type EcologStateData
 local state = {
@@ -16,6 +17,7 @@ local state = {
   client_id = nil,
   initialized = false,
   interpolation_enabled = true,
+  exiting = false,
 }
 
 ---Get active env files
@@ -100,6 +102,18 @@ function M.set_interpolation_enabled(enabled)
   state.interpolation_enabled = enabled
 end
 
+---Check if Neovim is exiting
+---@return boolean
+function M.is_exiting()
+  return state.exiting
+end
+
+---Set exiting state
+---@param exiting boolean
+function M.set_exiting(exiting)
+  state.exiting = exiting
+end
+
 ---Reset all state
 function M.reset()
   state = {
@@ -108,6 +122,7 @@ function M.reset()
     client_id = nil,
     initialized = false,
     interpolation_enabled = true,
+    exiting = false,
   }
 end
 
