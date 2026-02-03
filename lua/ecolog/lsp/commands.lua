@@ -389,7 +389,7 @@ function M.set_sources(sources, old_sources, callback)
     if success then
       -- Query updated sources for notifications
       M.list_sources(function(updated_sources)
-        local enabled = { shell = false, file = false }
+        local enabled = { shell = false, file = false, remote = false }
         local any_enabled = false
 
         if updated_sources and #updated_sources > 0 then
@@ -397,9 +397,9 @@ function M.set_sources(sources, old_sources, callback)
             local key = src.name:lower()
             if enabled[key] ~= nil then
               enabled[key] = src.enabled
-              if src.enabled then
-                any_enabled = true
-              end
+            end
+            if src.enabled then
+              any_enabled = true
             end
           end
         end
@@ -407,12 +407,14 @@ function M.set_sources(sources, old_sources, callback)
         -- Generate notification if old_sources provided
         if old_sources then
           local changes = {}
-          local source_names = { shell = "Shell", file = "File" }
+          local source_names = { shell = "Shell", file = "File", remote = "Remote" }
           for key, name in pairs(source_names) do
-            local was_enabled = old_sources[key]
-            local is_enabled = enabled[key]
-            if was_enabled ~= is_enabled then
-              table.insert(changes, name .. (is_enabled and " enabled" or " disabled"))
+            if old_sources[key] ~= nil then
+              local was_enabled = old_sources[key]
+              local is_enabled = enabled[key]
+              if was_enabled ~= is_enabled then
+                table.insert(changes, name .. (is_enabled and " enabled" or " disabled"))
+              end
             end
           end
           if #changes > 0 then
@@ -541,6 +543,196 @@ function M.get_interpolation(callback)
       return
     end
     callback(result and result.enabled or false)
+  end)
+end
+
+-- Remote Source Commands
+
+---@class EcologRemoteSource
+---@field id string Provider ID (e.g., "doppler", "aws")
+---@field displayName string Human-readable name
+---@field shortName string Short name for UI
+---@field authStatus string Authentication status string
+---@field isAuthenticated boolean Whether currently authenticated
+---@field scope table Current scope selection
+---@field secretCount number Number of secrets loaded
+---@field scopeLevels table[] Available scope levels
+
+---List all registered remote sources
+---@param callback fun(sources: EcologRemoteSource[], availableProviders: string[])
+function M.list_remote_sources(callback)
+  lsp.execute_command("ecolog.source.remote.list", {}, function(err, result)
+    if err then
+      notify.error(err.message or "Failed to list remote sources")
+      callback({}, {})
+      return
+    end
+
+    local sources = result and result.sources or {}
+    local available = result and result.availableProviders or {}
+
+    callback(sources, available)
+  end)
+end
+
+---@class EcologAuthField
+---@field name string Field name/key
+---@field label string Human-readable label
+---@field description? string Field description
+---@field required boolean Whether field is required
+---@field secret boolean Whether field should be masked
+---@field envVar? string Environment variable that provides this value
+---@field default? string Default value
+
+---Get authentication fields for a provider
+---@param provider string Provider ID
+---@param callback fun(fields: EcologAuthField[]|nil, error: string|nil)
+function M.get_remote_auth_fields(provider, callback)
+  lsp.execute_command("ecolog.source.remote.authFields", { provider }, function(err, result)
+    if err then
+      callback(nil, err.message or "Failed to get auth fields")
+      return
+    end
+
+    if result and result.error then
+      callback(nil, result.error)
+      return
+    end
+
+    callback(result and result.fields or {}, nil)
+  end)
+end
+
+---Authenticate with a remote provider
+---@param provider string Provider ID
+---@param credentials table<string, string> Credentials map
+---@param callback fun(success: boolean, authStatus: string|nil, error: string|nil)
+function M.authenticate_remote(provider, credentials, callback)
+  lsp.execute_command("ecolog.source.remote.authenticate", { provider, credentials }, function(err, result)
+    if err then
+      callback(false, nil, err.message or "Authentication failed")
+      return
+    end
+
+    if result and result.error then
+      callback(false, nil, result.error)
+      return
+    end
+
+    local success = result and result.success
+    local auth_status = result and result.authStatus
+
+    if success then
+      notify.info("Authenticated with " .. provider)
+    end
+
+    callback(success, auth_status, nil)
+  end)
+end
+
+---@class EcologScopeOption
+---@field id string Option ID
+---@field displayName string Human-readable name
+---@field description? string Optional description
+---@field icon? string Optional icon
+
+---Navigate scope options for a remote provider
+---@param provider string Provider ID
+---@param level string Scope level name
+---@param parentScope? table Parent scope selection
+---@param callback fun(options: EcologScopeOption[]|nil, error: string|nil)
+function M.navigate_remote_scope(provider, level, parentScope, callback)
+  local args = { provider, level }
+  if parentScope then
+    table.insert(args, parentScope)
+  end
+
+  lsp.execute_command("ecolog.source.remote.navigate", args, function(err, result)
+    if err then
+      callback(nil, err.message or "Failed to navigate scope")
+      return
+    end
+
+    if result and result.error then
+      callback(nil, result.error)
+      return
+    end
+
+    callback(result and result.options or {}, nil)
+  end)
+end
+
+---Select scope and fetch secrets from a remote provider
+---@param provider string Provider ID
+---@param scope table Scope selection
+---@param callback fun(success: boolean, secretCount: number|nil, error: string|nil)
+function M.select_remote_scope(provider, scope, callback)
+  lsp.execute_command("ecolog.source.remote.select", { provider, scope }, function(err, result)
+    if err then
+      callback(false, nil, err.message or "Failed to select scope")
+      return
+    end
+
+    if result and result.error then
+      callback(false, nil, result.error)
+      return
+    end
+
+    local success = result and result.success
+    local count = result and result.secretCount or 0
+
+    if success then
+      notify.info(string.format("Loaded %d secrets from %s", count, provider))
+
+      -- Invalidate statusline cache
+      local statusline_ok, statusline = pcall(require, "ecolog.statusline")
+      if statusline_ok and statusline.invalidate_cache then
+        statusline.invalidate_cache()
+      end
+
+      -- Re-query variable count
+      local current_file = vim.api.nvim_buf_get_name(0)
+      M.list_variables(current_file ~= "" and current_file or nil, function() end)
+    end
+
+    callback(success, count, nil)
+  end)
+end
+
+---Refresh secrets from a remote provider (or all if provider is nil)
+---@param provider? string Provider ID (nil for all)
+---@param callback fun(success: boolean, results: table|nil, error: string|nil)
+function M.refresh_remote(provider, callback)
+  local args = provider and { provider } or {}
+
+  lsp.execute_command("ecolog.source.remote.refresh", args, function(err, result)
+    if err then
+      callback(false, nil, err.message or "Failed to refresh")
+      return
+    end
+
+    if result and result.error then
+      callback(false, nil, result.error)
+      return
+    end
+
+    local success = result and (result.success or result.results)
+
+    if success then
+      notify.info("Remote secrets refreshed")
+
+      -- Invalidate statusline cache
+      local statusline_ok, statusline = pcall(require, "ecolog.statusline")
+      if statusline_ok and statusline.invalidate_cache then
+        statusline.invalidate_cache()
+      end
+
+      -- Re-query variable count
+      local current_file = vim.api.nvim_buf_get_name(0)
+      M.list_variables(current_file ~= "" and current_file or nil, function() end)
+    end
+
+    callback(success, result, nil)
   end)
 end
 

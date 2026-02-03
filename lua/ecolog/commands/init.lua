@@ -16,7 +16,7 @@ local function toggle_source(source_name)
   lsp_commands.list_sources(function(sources)
     local enabled_sources = {}
     local is_currently_enabled = false
-    local old_sources = { shell = false, file = false }
+    local old_sources = { shell = false, file = false, remote = false }
 
     for _, s in ipairs(sources) do
       local key = s.name:lower()
@@ -45,7 +45,7 @@ local function enable_source(source_name)
   lsp_commands.list_sources(function(sources)
     local enabled_sources = {}
     local already_enabled = false
-    local old_sources = { shell = false, file = false }
+    local old_sources = { shell = false, file = false, remote = false }
 
     for _, s in ipairs(sources) do
       local key = s.name:lower()
@@ -76,7 +76,7 @@ local function disable_source(source_name)
   lsp_commands.list_sources(function(sources)
     local enabled_sources = {}
     local was_enabled = false
-    local old_sources = { shell = false, file = false }
+    local old_sources = { shell = false, file = false, remote = false }
 
     for _, s in ipairs(sources) do
       local key = s.name:lower()
@@ -176,15 +176,291 @@ function M.shell_cmd(action)
   end
 end
 
----Handle remote source commands (stub for future)
----@param action? string "enable"|"disable"|nil (toggle)
-function M.remote_cmd(action)
+---Handle remote source commands
+---@param action? string "enable"|"disable"|"list"|"auth"|"select"|"refresh"|nil (toggle if nil)
+---@param provider? string Provider ID for provider-specific actions
+function M.remote_cmd(action, provider)
   if action == "enable" then
     enable_source("Remote")
   elseif action == "disable" then
     disable_source("Remote")
+  elseif action == "list" then
+    -- List all remote sources with their status
+    lsp_commands.list_remote_sources(function(sources, available)
+      if #sources == 0 and #available == 0 then
+        notify.info("No remote sources configured")
+        return
+      end
+
+      local lines = { "Remote Sources:" }
+      for _, src in ipairs(sources) do
+        local auth_icon = src.isAuthenticated and "✓" or "○"
+        local count_str = src.secretCount > 0 and string.format(" (%d secrets)", src.secretCount) or ""
+        table.insert(lines, string.format("  %s %s [%s]%s", auth_icon, src.displayName, src.authStatus, count_str))
+      end
+
+      if #available > 0 then
+        table.insert(lines, "")
+        table.insert(lines, "Available providers: " .. table.concat(available, ", "))
+      end
+
+      notify.info(table.concat(lines, "\n"))
+    end)
+  elseif action == "auth" then
+    -- Authenticate with a provider
+    if not provider then
+      -- Show picker to select provider first
+      lsp_commands.list_remote_sources(function(sources, available_providers)
+        local items = {}
+
+        -- Add configured sources with their auth status
+        for _, src in ipairs(sources) do
+          table.insert(items, { id = src.id, name = src.displayName, auth = src.authStatus })
+        end
+
+        -- Add available (but not yet configured) providers
+        if available_providers then
+          for _, provider_id in ipairs(available_providers) do
+            -- Check if this provider is already in the sources list
+            local already_added = false
+            for _, item in ipairs(items) do
+              if item.id == provider_id then
+                already_added = true
+                break
+              end
+            end
+            if not already_added then
+              table.insert(items, {
+                id = provider_id,
+                name = provider_id:gsub("^%l", string.upper), -- Capitalize
+                auth = "Not configured",
+              })
+            end
+          end
+        end
+
+        if #items == 0 then
+          notify.error("No remote providers available")
+          return
+        end
+
+        vim.schedule(function()
+          vim.ui.select(items, {
+            prompt = "Select provider to authenticate:",
+            format_item = function(item)
+              return string.format("%s [%s]", item.name, item.auth)
+            end,
+          }, function(selected)
+            if selected then
+              -- Schedule to ensure we're out of vim.ui.select context
+              vim.schedule(function()
+                M.remote_cmd("auth", selected.id)
+              end)
+            end
+          end)
+        end)
+      end)
+      return
+    end
+
+    -- Get auth fields and prompt for credentials
+    lsp_commands.get_remote_auth_fields(provider, function(fields, err)
+      if err then
+        notify.error(err)
+        return
+      end
+
+      if not fields or #fields == 0 then
+        notify.info(provider .. " does not require authentication fields")
+        return
+      end
+
+      -- Build credentials by prompting for each field
+      local credentials = {}
+      local function prompt_field(idx)
+        if idx > #fields then
+          -- All fields collected, authenticate
+          lsp_commands.authenticate_remote(provider, credentials, function(success, _auth_status, auth_err)
+            if not success then
+              notify.error(auth_err or "Authentication failed")
+            end
+          end)
+          return
+        end
+
+        local field = fields[idx]
+        local prompt_text = field.label
+        if field.envVar then
+          prompt_text = prompt_text .. string.format(" (or set %s)", field.envVar)
+        end
+        prompt_text = prompt_text .. ": "
+
+        -- Check if env var is set
+        local env_val = field.envVar and os.getenv(field.envVar)
+        if env_val and env_val ~= "" then
+          credentials[field.name] = env_val
+          prompt_field(idx + 1)
+          return
+        end
+
+        vim.defer_fn(function()
+          vim.ui.input({
+            prompt = prompt_text,
+            default = field.default or "",
+          }, function(input)
+            vim.schedule(function()
+              if input and input ~= "" then
+                credentials[field.name] = input
+              elseif field.required then
+                notify.error("Field '" .. field.label .. "' is required")
+                return
+              end
+              prompt_field(idx + 1)
+            end)
+          end)
+        end, 10)
+      end
+
+      vim.schedule(function()
+        prompt_field(1)
+      end)
+    end)
+  elseif action == "select" then
+    -- Interactive scope selection
+    if not provider then
+      -- Show picker to select provider first
+      lsp_commands.list_remote_sources(function(sources)
+        if #sources == 0 then
+          notify.error("No remote sources configured")
+          return
+        end
+
+        local auth_sources = {}
+        for _, src in ipairs(sources) do
+          if src.isAuthenticated then
+            table.insert(auth_sources, src)
+          end
+        end
+
+        if #auth_sources == 0 then
+          notify.error("No authenticated remote sources. Use ':Ecolog remote auth' first.")
+          return
+        end
+
+        vim.schedule(function()
+          vim.ui.select(auth_sources, {
+            prompt = "Select provider:",
+            format_item = function(item)
+              return item.displayName
+            end,
+          }, function(selected)
+            if selected then
+              vim.schedule(function()
+                M.remote_cmd("select", selected.id)
+              end)
+            end
+          end)
+        end)
+      end)
+      return
+    end
+
+    -- Get source info for scope levels
+    lsp_commands.list_remote_sources(function(sources)
+      local source = nil
+      for _, src in ipairs(sources) do
+        if src.id == provider then
+          source = src
+          break
+        end
+      end
+
+      if not source then
+        notify.error("Unknown provider: " .. provider)
+        return
+      end
+
+      if not source.isAuthenticated then
+        notify.error(provider .. " is not authenticated. Use ':Ecolog remote auth " .. provider .. "' first.")
+        return
+      end
+
+      local scope_levels = source.scopeLevels or {}
+      if #scope_levels == 0 then
+        notify.info(provider .. " does not require scope selection")
+        return
+      end
+
+      -- Navigate through scope levels
+      local scope = { selections = {} }
+
+      local function navigate_level(idx)
+        if idx > #scope_levels then
+          -- All levels selected, fetch secrets
+          lsp_commands.select_remote_scope(provider, scope, function(success, _, err)
+            if not success then
+              notify.error(err or "Failed to fetch secrets")
+            end
+            -- Note: success notification is handled by select_remote_scope
+          end)
+          return
+        end
+
+        local level = scope_levels[idx]
+        if not level.required then
+          navigate_level(idx + 1)
+          return
+        end
+
+        lsp_commands.navigate_remote_scope(provider, level.name, scope, function(options, err)
+          if err then
+            notify.error(err)
+            return
+          end
+
+          if not options or #options == 0 then
+            notify.error("No options available for " .. level.displayName)
+            return
+          end
+
+          vim.defer_fn(function()
+            vim.ui.select(options, {
+              prompt = "Select " .. level.displayName .. ":",
+              format_item = function(item)
+                if item.description then
+                  return string.format("%s - %s", item.displayName, item.description)
+                end
+                return item.displayName
+              end,
+            }, function(selected)
+              if selected then
+                vim.schedule(function()
+                  scope.selections[level.name] = { selected.id }
+                  navigate_level(idx + 1)
+                end)
+              end
+            end)
+          end, 10)
+        end)
+      end
+
+      vim.schedule(function()
+        navigate_level(1)
+      end)
+    end)
+  elseif action == "refresh" then
+    -- Refresh secrets
+    lsp_commands.refresh_remote(provider, function(success, results, err)
+      if success then
+        local count = results and results.totalSecrets or 0
+        local sources = results and results.refreshedSources or 0
+        notify.info(string.format("Refreshed %d sources, %d secrets total", sources, count))
+      else
+        notify.error(err or "Failed to refresh")
+      end
+    end)
   else
-    -- Default: toggle
+    -- Default: toggle Remote source
     toggle_source("Remote")
   end
 end
@@ -193,7 +469,7 @@ end
 ---@param action? string "enable"|"disable"|"toggle"|nil
 function M.interpolation_cmd(action)
   if action == "enable" then
-    lsp_commands.set_interpolation(true, function(success, enabled)
+    lsp_commands.set_interpolation(true, function(success)
       if success then
         notify.info("Interpolation enabled")
       else
@@ -201,7 +477,7 @@ function M.interpolation_cmd(action)
       end
     end)
   elseif action == "disable" then
-    lsp_commands.set_interpolation(false, function(success, enabled)
+    lsp_commands.set_interpolation(false, function(success)
       if success then
         notify.info("Interpolation disabled")
       else
@@ -369,7 +645,8 @@ function M._register_commands()
     elseif subcommand == "shell" then
       M.shell_cmd(action)
     elseif subcommand == "remote" then
-      M.remote_cmd(action)
+      local provider = args[3]
+      M.remote_cmd(action, provider)
     elseif subcommand == "workspaces" then
       M.workspaces()
     elseif subcommand == "root" then
@@ -411,10 +688,14 @@ function M._register_commands()
           return vim.tbl_filter(function(c)
             return c:find(arglead, 1, true) == 1
           end, { "select", "enable", "disable", "open_active" })
-        elseif sub == "shell" or sub == "remote" then
+        elseif sub == "shell" then
           return vim.tbl_filter(function(c)
             return c:find(arglead, 1, true) == 1
           end, { "enable", "disable" })
+        elseif sub == "remote" then
+          return vim.tbl_filter(function(c)
+            return c:find(arglead, 1, true) == 1
+          end, { "enable", "disable", "list", "auth", "select", "refresh" })
         elseif sub == "interpolation" then
           return vim.tbl_filter(function(c)
             return c:find(arglead, 1, true) == 1

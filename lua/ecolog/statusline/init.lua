@@ -161,9 +161,9 @@ local function format_sources(sources)
     return ""
   end
 
-  local icons = cfg.sources.icons or { shell = "S", file = "F" }
+  local icons = cfg.sources.icons or { shell = "S", file = "F", remote = "R" }
   local parts = {}
-  local source_order = { "shell", "file" }
+  local source_order = { "shell", "file", "remote" }
 
   for _, key in ipairs(source_order) do
     local icon = icons[key]
@@ -249,7 +249,7 @@ local function get_status_data()
     -- Use synchronous query for sources
     local result = lsp.execute_command("ecolog.source.list", {})
     if result and result.sources then
-      sources = { shell = false, file = false }
+      sources = { shell = false, file = false, remote = false }
       for _, src in ipairs(result.sources) do
         local key = src.name:lower()
         if sources[key] ~= nil then

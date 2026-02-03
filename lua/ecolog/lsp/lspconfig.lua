@@ -130,6 +130,9 @@ function M.setup(lsp_config)
         if source_defaults.file ~= false then
           table.insert(enabled_sources, "File")
         end
+        if source_defaults.remote == true then
+          table.insert(enabled_sources, "Remote")
+        end
         -- Silent sync: no old_sources means no notification
         lsp_commands.set_sources(enabled_sources)
       end

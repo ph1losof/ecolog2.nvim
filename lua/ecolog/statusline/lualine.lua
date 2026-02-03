@@ -189,13 +189,13 @@ local function create_component_class()
       return
     end
 
-    local icons = config.sources.icons or { shell = "S", file = "F" }
+    local icons = config.sources.icons or { shell = "S", file = "F", remote = "R" }
     local source_str = ""
     local default_hl = self.highlights.default
         and self.highlight_module.component_format_highlight(self.highlights.default)
       or ""
 
-    for _, key in ipairs({ "shell", "file" }) do
+    for _, key in ipairs({ "shell", "file", "remote" }) do
       local icon = icons[key]
       local enabled = sources[key]
 
@@ -220,7 +220,7 @@ local function create_component_class()
       -- Handle badge format
       if config.sources.format == "badges" then
         local badge_str = ""
-        for _, key in ipairs({ "shell", "file" }) do
+        for _, key in ipairs({ "shell", "file", "remote" }) do
           local icon = icons[key]
           local enabled = sources[key]
 

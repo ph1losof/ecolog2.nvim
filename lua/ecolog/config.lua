@@ -71,6 +71,7 @@ local M = {}
 ---@class EcologStatuslineSourcesIconsConfig
 ---@field shell? string Icon/letter for Shell source (default: "S")
 ---@field file? string Icon/letter for File source (default: "F")
+---@field remote? string Icon/letter for Remote source (default: "R")
 
 ---@class EcologStatuslineSourcesConfig
 ---@field enabled? boolean Show sources section (default: true)
@@ -156,6 +157,7 @@ local DEFAULT_CONFIG = {
       icons = {
         shell = "S",
         file = "F",
+        remote = "R",
       },
     },
     interpolation = {
