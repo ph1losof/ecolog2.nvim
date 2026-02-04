@@ -1,4 +1,4 @@
----@class Ecolog
+---class Ecolog
 ---ecolog.nvim - Neovim plugin for environment variable tooling
 ---Wraps ecolog-lsp to provide IDE features for env vars
 local M = {}
@@ -13,128 +13,128 @@ local is_setup = false
 ---Setup ecolog.nvim
 ---@param opts? EcologUserConfig
 function M.setup(opts)
-  if is_setup then
-    return
-  end
+	if is_setup then
+		return
+	end
 
-  -- Check minimum Neovim version
-  -- 0.11+ for native vim.lsp.config support
-  -- 0.10+ works with nvim-lspconfig backend
-  if vim.fn.has("nvim-0.10") ~= 1 then
-    notify.error("ecolog.nvim requires Neovim 0.10+ (0.11+ recommended)")
-    return
-  end
+	-- Check minimum Neovim version
+	-- 0.11+ for native vim.lsp.config support
+	-- 0.10+ works with nvim-lspconfig backend
+	if vim.fn.has("nvim-0.10") ~= 1 then
+		notify.error("ecolog.nvim requires Neovim 0.10+ (0.11+ recommended)")
+		return
+	end
 
-  -- Configure
-  config.setup(opts)
+	-- Configure
+	config.setup(opts)
 
-  -- Note: Source defaults are synced to LSP in lsp/lspconfig.lua or lsp/native.lua
-  -- after LSP initialization, similar to how interpolation is synced.
-  -- This ensures LSP is the source of truth for source state.
+	-- Note: Source defaults are synced to LSP in lsp/lspconfig.lua or lsp/native.lua
+	-- after LSP initialization, similar to how interpolation is synced.
+	-- This ensures LSP is the source of truth for source state.
 
-  -- Setup statusline with highlights
-  local statusline = require("ecolog.statusline")
-  statusline.setup(config.get_statusline())
+	-- Setup statusline with highlights
+	local statusline = require("ecolog.statusline")
+	statusline.setup(config.get_statusline())
 
-  -- Setup LSP (auto-detects best backend)
-  local lsp = require("ecolog.lsp")
-  lsp.setup()
+	-- Setup LSP (auto-detects best backend)
+	local lsp = require("ecolog.lsp")
+	lsp.setup()
 
-  -- Register user commands
-  local commands = require("ecolog.commands")
-  commands._register_commands()
+	-- Register user commands
+	local commands = require("ecolog.commands")
+	commands._register_commands()
 
-  -- Setup autocmds for env file changes
-  local lsp_config = config.get_lsp()
-  local augroup = vim.api.nvim_create_augroup("EcologEnvFileWatch", { clear = true })
+	-- Setup autocmds for env file changes
+	local lsp_config = config.get_lsp()
+	local augroup = vim.api.nvim_create_augroup("EcologEnvFileWatch", { clear = true })
 
-  -- Refresh statusline when env files are written or deleted
-  vim.api.nvim_create_autocmd({ "BufWritePost", "BufDelete" }, {
-    group = augroup,
-    pattern = lsp_config.env_patterns,
-    callback = function()
-      vim.schedule(function()
-        local lsp_commands = require("ecolog.lsp.commands")
-        lsp_commands.refresh_state()
-      end)
-    end,
-    desc = "Ecolog: Refresh statusline on env file changes",
-  })
+	-- Refresh statusline when env files are written or deleted
+	vim.api.nvim_create_autocmd({ "BufWritePost", "BufDelete" }, {
+		group = augroup,
+		pattern = lsp_config.env_patterns,
+		callback = function()
+			vim.schedule(function()
+				local lsp_commands = require("ecolog.lsp.commands")
+				lsp_commands.refresh_state()
+			end)
+		end,
+		desc = "Ecolog: Refresh statusline on env file changes",
+	})
 
-  -- Stop LSP and cleanup on exit
-  vim.api.nvim_create_autocmd("VimLeavePre", {
-    group = augroup,
-    callback = function()
-      -- Set exiting flag first to prevent any pending operations
-      state.set_exiting(true)
+	-- Stop LSP and cleanup on exit
+	vim.api.nvim_create_autocmd("VimLeavePre", {
+		group = augroup,
+		callback = function()
+			-- Set exiting flag first to prevent any pending operations
+			state.set_exiting(true)
 
-      -- Stop LSP client to ensure clean shutdown
-      local lsp = require("ecolog.lsp")
-      lsp.stop(true)
+			-- Stop LSP client to ensure clean shutdown
+			local lsp = require("ecolog.lsp")
+			lsp.stop(true)
 
-      -- Clear vim.env if enabled
-      if config.get_vim_env() then
-        local vim_env = require("ecolog.vim_env")
-        vim_env.clear()
-      end
-    end,
-    desc = "Ecolog: Stop LSP and cleanup on exit",
-  })
+			-- Clear vim.env if enabled
+			if config.get_vim_env() then
+				local vim_env = require("ecolog.vim_env")
+				vim_env.clear()
+			end
+		end,
+		desc = "Ecolog: Stop LSP and cleanup on exit",
+	})
 
-  -- Initial vim.env sync after LSP is ready (if enabled)
-  if config.get_vim_env() then
-    vim.defer_fn(function()
-      local lsp_commands = require("ecolog.lsp.commands")
-      lsp_commands.list_variables(nil, function() end)
-    end, 500)
-  end
+	-- Initial vim.env sync after LSP is ready (if enabled)
+	if config.get_vim_env() then
+		vim.defer_fn(function()
+			local lsp_commands = require("ecolog.lsp.commands")
+			lsp_commands.list_variables(nil, function() end)
+		end, 500)
+	end
 
-  -- Mark as initialized
-  state.set_initialized(true)
-  is_setup = true
+	-- Mark as initialized
+	state.set_initialized(true)
+	is_setup = true
 end
 
 ---Check if ecolog is setup
 ---@return boolean
 function M.is_setup()
-  return is_setup
+	return is_setup
 end
 
 ---Get configuration
 ---@return EcologUserConfig
 function M.get_config()
-  return config.get()
+	return config.get()
 end
 
 ---Get hooks module (for external integrations like shelter.nvim)
 ---@return EcologHooks
 function M.hooks()
-  return require("ecolog.hooks")
+	return require("ecolog.hooks")
 end
 
 ---Get statusline module
 ---@return EcologStatusline
 function M.statusline()
-  return require("ecolog.statusline")
+	return require("ecolog.statusline")
 end
 
 ---Get lualine component
 ---@param opts? EcologStatuslineOpts
 ---@return table Lualine component configuration
 function M.lualine(opts)
-  return require("ecolog.statusline.lualine").create(opts)
+	return require("ecolog.statusline.lualine").create(opts)
 end
 
 ---Get LSP module
 ---@return EcologLsp
 function M.lsp()
-  return require("ecolog.lsp")
+	return require("ecolog.lsp")
 end
 
 ---Get pickers module
 ---@return EcologPickers
 function M.pickers()
-  return require("ecolog.pickers")
+	return require("ecolog.pickers")
 end
 
 -- Convenience functions that delegate to commands
@@ -143,58 +143,58 @@ end
 
 ---Select active env file via picker
 function M.select()
-  require("ecolog.commands").files_cmd("select")
+	require("ecolog.commands").files_cmd("select")
 end
 
 ---Copy variable name or value at cursor
 ---@param what "name"|"value"
 function M.copy(what)
-  require("ecolog.commands").copy(what)
+	require("ecolog.commands").copy(what)
 end
 
 ---Refresh LSP (reload env files)
 function M.refresh()
-  require("ecolog.commands").refresh()
+	require("ecolog.commands").refresh()
 end
 
 ---Open variable picker
 function M.list()
-  require("ecolog.commands").list()
+	require("ecolog.commands").list()
 end
 
 ---Open file picker
 function M.files()
-  require("ecolog.commands").files_cmd("select")
+	require("ecolog.commands").files_cmd("select")
 end
 
 ---Generate .env.example file
 ---@param opts? { output?: string }
 function M.generate_example(opts)
-  require("ecolog.commands").generate_example(opts)
+	require("ecolog.commands").generate_example(opts)
 end
 
 ---Show ecolog info
 function M.info()
-  require("ecolog.commands").info()
+	require("ecolog.commands").info()
 end
 
 ---Get a variable by name
 ---@param name string Variable name
 ---@param callback fun(var: EcologVariable|nil)
 function M.get(name, callback)
-  require("ecolog.lsp.commands").get_variable(name, callback)
+	require("ecolog.lsp.commands").get_variable(name, callback)
 end
 
 ---List all variables
 ---@param file_path? string Optional file path for package scoping
 ---@param callback fun(vars: EcologVariable[])
 function M.all(file_path, callback)
-  -- Handle backwards compatibility: if first arg is a function, it's the callback
-  if type(file_path) == "function" then
-    callback = file_path
-    file_path = nil
-  end
-  require("ecolog.lsp.commands").list_variables(file_path, callback)
+	-- Handle backwards compatibility: if first arg is a function, it's the callback
+	if type(file_path) == "function" then
+		callback = file_path
+		file_path = nil
+	end
+	require("ecolog.lsp.commands").list_variables(file_path, callback)
 end
 
 return M

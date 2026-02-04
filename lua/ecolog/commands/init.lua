@@ -285,6 +285,18 @@ local function toggle_source(source_name)
 
     -- Toggle: if enabled, remove it; if disabled, add it
     if not is_currently_enabled then
+      -- Check for providers before enabling Remote
+      if source_name == "Remote" then
+        lsp_commands().list_providers(function(providers)
+          if not providers or #providers == 0 then
+            notify().error("No remote providers available")
+            return
+          end
+          table.insert(enabled_sources, source_name)
+          lsp_commands().set_sources(enabled_sources, old_sources)
+        end)
+        return
+      end
       table.insert(enabled_sources, source_name)
     end
 
@@ -315,6 +327,19 @@ local function enable_source(source_name)
 
     if already_enabled then
       notify().info(source_name .. " source is already enabled")
+      return
+    end
+
+    -- Check for providers before enabling Remote
+    if source_name == "Remote" then
+      lsp_commands().list_providers(function(providers)
+        if not providers or #providers == 0 then
+          notify().error("No remote providers available")
+          return
+        end
+        table.insert(enabled_sources, source_name)
+        lsp_commands().set_sources(enabled_sources, old_sources)
+      end)
       return
     end
 
@@ -756,47 +781,55 @@ end
 ---Setup wizard: Guide through complete remote source configuration
 ---@param provider? string Optional provider ID to skip provider selection
 function M._remote_setup_wizard(provider)
-  -- Step 1: Ensure Remote source is enabled
-  lsp_commands().list_sources(function(sources)
-    local remote_enabled = false
-    local enabled_sources = {}
-    local old_sources = { shell = false, file = false, remote = false }
+  -- Step 1: Check for providers before enabling Remote source
+  lsp_commands().list_providers(function(providers)
+    if not providers or #providers == 0 then
+      notify().error("No remote providers available")
+      return
+    end
 
-    for _, s in ipairs(sources) do
-      local key = s.name:lower()
-      if old_sources[key] ~= nil then
-        old_sources[key] = s.enabled
-      end
-      if s.enabled then
-        table.insert(enabled_sources, s.name)
-        if s.name == "Remote" then
-          remote_enabled = true
+    -- Step 2: Ensure Remote source is enabled
+    lsp_commands().list_sources(function(sources)
+      local remote_enabled = false
+      local enabled_sources = {}
+      local old_sources = { shell = false, file = false, remote = false }
+
+      for _, s in ipairs(sources) do
+        local key = s.name:lower()
+        if old_sources[key] ~= nil then
+          old_sources[key] = s.enabled
+        end
+        if s.enabled then
+          table.insert(enabled_sources, s.name)
+          if s.name == "Remote" then
+            remote_enabled = true
+          end
         end
       end
-    end
 
-    local function continue_setup()
-      if provider then
-        -- Provider specified
-        M._setup_auth_then_scope(provider, "Setup")
-      else
-        -- Show provider picker
-        M._setup_provider_picker(function(selected_provider)
-          M._setup_auth_then_scope(selected_provider, "Setup")
-        end)
+      local function continue_setup()
+        if provider then
+          -- Provider specified
+          M._setup_auth_then_scope(provider, "Setup")
+        else
+          -- Show provider picker
+          M._setup_provider_picker(function(selected_provider)
+            M._setup_auth_then_scope(selected_provider, "Setup")
+          end)
+        end
       end
-    end
 
-    if not remote_enabled then
-      -- Enable Remote source first
-      table.insert(enabled_sources, "Remote")
-      -- Note: set_sources already sends a notification, so we don't add another
-      lsp_commands().set_sources(enabled_sources, old_sources, function()
-        vim.schedule(continue_setup)
-      end)
-    else
-      continue_setup()
-    end
+      if not remote_enabled then
+        -- Enable Remote source first
+        table.insert(enabled_sources, "Remote")
+        -- Note: set_sources already sends a notification, so we don't add another
+        lsp_commands().set_sources(enabled_sources, old_sources, function()
+          vim.schedule(continue_setup)
+        end)
+      else
+        continue_setup()
+      end
+    end)
   end)
 end
 
