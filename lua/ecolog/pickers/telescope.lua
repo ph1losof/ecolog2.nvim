@@ -57,12 +57,13 @@ function M.pick_variables(opts)
         finder = finders.new_table({
           results = data.entries,
           entry_maker = function(entry)
+            local display_value, value_hl = common.format_value_for_display(entry.value)
             return {
               value = entry.raw,
               display = function()
                 return displayer({
                   { entry.name, "Identifier" },
-                  { entry.value or "", "String" },
+                  { display_value, value_hl or "String" },
                   { entry.source or "", "Comment" },
                 })
               end,

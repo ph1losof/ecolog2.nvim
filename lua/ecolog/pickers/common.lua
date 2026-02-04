@@ -222,4 +222,16 @@ function M.goto_var_source(var)
   M.goto_source(var.source)
 end
 
+---Format a value for display, handling empty values
+---Empty values are shown as "(empty)" to distinguish from missing values
+---@param value string|nil The raw value
+---@return string formatted_value The formatted display value
+---@return string|nil highlight_group The highlight group to use (nil for default)
+function M.format_value_for_display(value)
+  if value == nil or value == "" then
+    return "(empty)", "Comment"
+  end
+  return value, nil
+end
+
 return M

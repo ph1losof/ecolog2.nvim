@@ -291,9 +291,20 @@ function M._parse_hover_result(result)
     name = content:match("^`([^`]+)`")
   end
 
+  -- Match value - handle both backticked values and *(empty)* indicator
   local value = content:match("%*%*Value%*%*:%s*`([^`]*)`")
   if not value then
     value = content:match("Value:%s*`([^`]*)`")
+  end
+  -- Check for empty indicator (italic markdown)
+  if not value then
+    local empty_match = content:match("%*%*Value%*%*:%s*%*%(empty%)%*")
+    if not empty_match then
+      empty_match = content:match("Value:%s*%*%(empty%)%*")
+    end
+    if empty_match then
+      value = ""
+    end
   end
 
   local source = content:match("%*%*Source%*%*:%s*`([^`]*)`")

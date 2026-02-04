@@ -109,10 +109,11 @@ function M.pick_variables(opts)
       },
       format = function(item)
         local longest = item._longest or 20
+        local display_value, value_hl = common.format_value_for_display(item.value)
         return {
           { ("%-" .. longest .. "s"):format(item.name), "@variable" },
           { " " },
-          { item.value or "", "@string" },
+          { display_value, value_hl or "@string" },
           { "  " },
           { item.source or "", "@comment" },
         }

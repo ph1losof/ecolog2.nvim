@@ -36,7 +36,8 @@ function M.pick_variables(opts)
 
     for _, entry in ipairs(data.entries) do
       local format_str = "%-" .. data.longest_name .. "s │ %-40s │ %s"
-      local display = string.format(format_str, entry.name, entry.value or "", entry.source or "")
+      local display_value = common.format_value_for_display(entry.value)
+      local display = string.format(format_str, entry.name, display_value, entry.source or "")
       table.insert(display_entries, display)
       entry_map[display] = entry.raw
     end
