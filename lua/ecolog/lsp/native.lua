@@ -3,28 +3,10 @@
 local M = {}
 
 local server_config = require("ecolog.lsp.server_config")
-local state = require("ecolog.state")
-local hooks = require("ecolog.hooks")
+local lifecycle = require("ecolog.lsp.lifecycle")
 
 ---@type boolean
 local is_configured = false
-
----Check if a buffer should have LSP attached
----@param bufnr number
----@return boolean
-local function should_attach(bufnr)
-  local buftype = vim.bo[bufnr].buftype
-  -- Skip special buffers
-  if buftype ~= "" then
-    return false
-  end
-  local bufname = vim.api.nvim_buf_get_name(bufnr)
-  -- Skip unnamed buffers
-  if bufname == "" then
-    return false
-  end
-  return true
-end
 
 ---Setup the LSP using native vim.lsp.config (Neovim 0.11+)
 ---@param lsp_config EcologLspConfig
@@ -36,78 +18,10 @@ function M.setup(lsp_config)
   local config = server_config.build(lsp_config)
 
   -- Track if we've sent setRoot (only need to do it once per server instance)
-  local root_sent = false
+  local root_sent = { value = false }
 
-  -- Server-level initialization (fires when LSP starts, no buffer required)
-  local function on_init(client, _init_result)
-    state.set_client_id(client.id)
-
-    -- Query LSP state to populate statusline (no buffer context)
-    vim.schedule(function()
-      local lsp_commands = require("ecolog.lsp.commands")
-
-      -- List files without file_path context
-      lsp_commands.list_files(nil, function(files)
-        if files and #files > 0 then
-          state.set_active_files(files)
-        end
-      end)
-
-      -- Sync source defaults if configured (silent sync, no old_sources = no notification)
-      local init_opts = lsp_config.init_options or {}
-      if init_opts.sources and init_opts.sources.defaults then
-        local source_defaults = init_opts.sources.defaults
-        local enabled_sources = {}
-        if source_defaults.shell ~= false then
-          table.insert(enabled_sources, "Shell")
-        end
-        if source_defaults.file ~= false then
-          table.insert(enabled_sources, "File")
-        end
-        if source_defaults.remote == true then
-          table.insert(enabled_sources, "Remote")
-        end
-        -- Silent sync: no old_sources means no notification
-        lsp_commands.set_sources(enabled_sources)
-      end
-
-      -- Sync interpolation state for statusline
-      if init_opts.interpolation and init_opts.interpolation.enabled ~= nil then
-        local desired_state = init_opts.interpolation.enabled
-        lsp_commands.set_interpolation(desired_state, function(_success)
-          state.set_interpolation_enabled(desired_state)
-        end)
-      else
-        lsp_commands.get_interpolation(function(enabled)
-          state.set_interpolation_enabled(enabled)
-        end)
-      end
-    end)
-  end
-
-  -- Buffer-specific initialization (fires when buffer attaches to LSP)
-  local function on_attach(client, bufnr)
-    hooks.fire("on_lsp_attach", { client = client, bufnr = bufnr })
-
-    -- Send workspace root to LSP if we detected one and haven't sent it yet
-    if not root_sent and config.settings.workspace and config.settings.workspace.root then
-      root_sent = true
-      local lsp_commands = require("ecolog.lsp.commands")
-      lsp_commands.set_root(config.settings.workspace.root)
-    end
-
-    -- Query buffer-specific variable count
-    vim.schedule(function()
-      local lsp_commands = require("ecolog.lsp.commands")
-      local current_file = vim.api.nvim_buf_get_name(bufnr)
-
-      lsp_commands.list_variables(current_file, function(vars)
-        if vars and #vars > 0 then
-          state.set_var_count(#vars)
-        end
-      end)
-    end)
-  end
+  local on_init = lifecycle.create_on_init({ lsp_config = lsp_config })
+  local on_attach = lifecycle.create_on_attach({ config = config, root_sent = root_sent })
 
   -- LSP start configuration
   local lsp_start_config = {
@@ -127,7 +41,7 @@ function M.setup(lsp_config)
   vim.api.nvim_create_autocmd({ "BufReadPost", "BufNewFile" }, {
     group = augroup,
     callback = function(event)
-      if not should_attach(event.buf) then
+      if not lifecycle.should_attach(event.buf) then
         return
       end
       -- Start or attach the LSP to this buffer
@@ -138,7 +52,7 @@ function M.setup(lsp_config)
   -- LSP starts on first buffer via autocmd above (deferred startup for faster setup)
   -- If current buffer is already valid, trigger attachment immediately
   local current_buf = vim.api.nvim_get_current_buf()
-  if should_attach(current_buf) then
+  if lifecycle.should_attach(current_buf) then
     vim.lsp.start(lsp_start_config, { bufnr = current_buf })
   end
 

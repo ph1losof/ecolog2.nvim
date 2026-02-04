@@ -191,6 +191,20 @@ local DEFAULT_CONFIG = {
 ---@type EcologUserConfig
 local current_config = vim.deepcopy(DEFAULT_CONFIG)
 
+---Get default configuration
+---@return EcologUserConfig
+function M.get_defaults()
+  return vim.deepcopy(DEFAULT_CONFIG)
+end
+
+---Merge user config with defaults
+---@param opts? EcologUserConfig
+---@return EcologUserConfig
+function M.merge_config(opts)
+  opts = opts or {}
+  return vim.tbl_deep_extend("force", vim.deepcopy(DEFAULT_CONFIG), opts)
+end
+
 ---Setup configuration
 ---@param opts? EcologUserConfig
 function M.setup(opts)
@@ -202,6 +216,26 @@ end
 ---@return EcologUserConfig
 function M.get()
   return current_config
+end
+
+---Get a specific option by dot-separated path
+---@param path string Dot-separated path (e.g., "lsp.enabled")
+---@return any
+function M.get_option(path)
+  local parts = vim.split(path, ".", { plain = true })
+  local value = current_config
+
+  for _, part in ipairs(parts) do
+    if type(value) ~= "table" then
+      return nil
+    end
+    value = value[part]
+    if value == nil then
+      return nil
+    end
+  end
+
+  return value
 end
 
 ---Get LSP configuration

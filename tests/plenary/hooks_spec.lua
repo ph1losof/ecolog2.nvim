@@ -62,7 +62,7 @@ describe("hooks module", function()
         return data
       end)
 
-      local result = hooks.fire("test_event", { value = "original" })
+      local result = hooks.fire_filter("test_event", { value = "original" })
 
       assert.is_true(result.modified)
     end)
@@ -106,7 +106,7 @@ describe("hooks module", function()
       hooks.fire("test_event", {})
       assert.equals(1, call_count)
 
-      hooks.unregister(hook_id)
+      hooks.unregister("test_event", hook_id)
 
       hooks.fire("test_event", {})
       -- Call count should not increase after unregister

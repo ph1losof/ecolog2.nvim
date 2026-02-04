@@ -21,19 +21,19 @@ describe("config module", function()
       assert.is_table(defaults.statusline)
     end)
 
-    it("should have lsp.enabled default to true", function()
+    it("should have lsp.backend default to auto", function()
       local defaults = config.get_defaults()
-      assert.is_true(defaults.lsp.enabled)
+      assert.equals("auto", defaults.lsp.backend)
     end)
 
-    it("should have statusline.enabled default to true", function()
+    it("should have statusline.hidden_mode default to false", function()
       local defaults = config.get_defaults()
-      assert.is_true(defaults.statusline.enabled)
+      assert.is_false(defaults.statusline.hidden_mode)
     end)
 
-    it("should have default picker provider", function()
+    it("should have picker keys defined", function()
       local defaults = config.get_defaults()
-      assert.is_not_nil(defaults.picker.default)
+      assert.is_table(defaults.picker.keys)
     end)
   end)
 
@@ -41,14 +41,14 @@ describe("config module", function()
     it("should merge user config with defaults", function()
       local user_config = {
         lsp = {
-          enabled = false,
+          backend = "native",
         },
       }
 
       local merged = config.merge_config(user_config)
 
       -- User value should override
-      assert.is_false(merged.lsp.enabled)
+      assert.equals("native", merged.lsp.backend)
       -- Other defaults should remain
       assert.is_table(merged.picker)
       assert.is_table(merged.statusline)
@@ -57,24 +57,24 @@ describe("config module", function()
     it("should deep merge nested tables", function()
       local user_config = {
         statusline = {
-          components = {
-            var_count = true,
+          icons = {
+            env = "E",
           },
         },
       }
 
       local merged = config.merge_config(user_config)
 
-      assert.is_true(merged.statusline.components.var_count)
+      assert.equals("E", merged.statusline.icons.env)
       -- Other statusline defaults should remain
-      assert.is_true(merged.statusline.enabled)
+      assert.is_false(merged.statusline.hidden_mode)
     end)
 
     it("should handle empty user config", function()
       local merged = config.merge_config({})
       local defaults = config.get_defaults()
 
-      assert.are.same(defaults.lsp.enabled, merged.lsp.enabled)
+      assert.are.same(defaults.lsp.backend, merged.lsp.backend)
     end)
 
     it("should handle nil user config", function()
@@ -88,18 +88,18 @@ describe("config module", function()
     it("should accept valid configuration", function()
       assert.has_no.errors(function()
         config.setup({
-          lsp = { enabled = true },
+          lsp = { backend = "auto" },
         })
       end)
     end)
 
     it("should store configuration for later retrieval", function()
       config.setup({
-        lsp = { enabled = false },
+        lsp = { backend = "native" },
       })
 
       local current = config.get()
-      assert.is_false(current.lsp.enabled)
+      assert.equals("native", current.lsp.backend)
     end)
   end)
 
@@ -114,11 +114,11 @@ describe("config module", function()
       end)
     end)
 
-    it("should accept valid picker provider", function()
+    it("should accept valid picker backend", function()
       assert.has_no.errors(function()
         config.setup({
           picker = {
-            default = "telescope",
+            backend = "telescope",
           },
         })
       end)
@@ -128,11 +128,11 @@ describe("config module", function()
   describe("get_option", function()
     it("should return specific option value", function()
       config.setup({
-        lsp = { enabled = true },
+        lsp = { backend = "native" },
       })
 
-      local value = config.get_option("lsp.enabled")
-      assert.is_true(value)
+      local value = config.get_option("lsp.backend")
+      assert.equals("native", value)
     end)
 
     it("should return nil for non-existent option", function()

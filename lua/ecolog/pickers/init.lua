@@ -5,6 +5,30 @@ local M = {}
 local config = require("ecolog.config")
 local notify = require("ecolog.notification_manager")
 
+---Check if a specific picker backend is available
+---@param backend "telescope"|"fzf"|"snacks"
+---@return boolean
+function M.is_available(backend)
+  if backend == "telescope" then
+    local ok = pcall(require, "telescope")
+    return ok
+  elseif backend == "fzf" then
+    local ok = pcall(require, "fzf-lua")
+    return ok
+  elseif backend == "snacks" then
+    local ok = pcall(require, "snacks.picker")
+    return ok
+  end
+  return false
+end
+
+---Get the default/detected picker backend
+---@return "telescope"|"fzf"|"snacks"|"none"
+function M.get_default()
+  local backend = M.detect_backend()
+  return backend or "none"
+end
+
 ---Detect available picker backend
 ---@return "telescope"|"fzf"|"snacks"|nil
 function M.detect_backend()

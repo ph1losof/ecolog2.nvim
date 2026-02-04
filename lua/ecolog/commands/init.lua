@@ -263,28 +263,49 @@ end
 -- Source Toggle Functions
 -- ============================================================================
 
----Toggle a source on/off
+---@alias SourceOperation "toggle"|"enable"|"disable"
+
+---Modify a source (toggle, enable, or disable)
 ---@param source_name EcologSourceName
-local function toggle_source(source_name)
+---@param operation SourceOperation
+local function modify_source(source_name, operation)
   lsp_commands().list_sources(function(sources)
     local enabled_sources = {}
-    local is_currently_enabled = false
     local old_sources = { shell = false, file = false, remote = false }
+    local target_enabled = false
 
+    -- Build old_sources map and enabled_sources list
     for _, s in ipairs(sources) do
       local key = s.name:lower()
       if old_sources[key] ~= nil then
         old_sources[key] = s.enabled
       end
       if s.name == source_name then
-        is_currently_enabled = s.enabled
-      elseif s.enabled then
+        target_enabled = s.enabled
+      end
+      -- For toggle/enable: keep other enabled sources
+      -- For disable: keep all except target
+      if s.enabled and s.name ~= source_name then
+        table.insert(enabled_sources, s.name)
+      elseif s.enabled and s.name == source_name and operation ~= "disable" and operation ~= "toggle" then
+        -- For enable: keep target if already enabled
         table.insert(enabled_sources, s.name)
       end
     end
 
-    -- Toggle: if enabled, remove it; if disabled, add it
-    if not is_currently_enabled then
+    -- Handle already-in-desired-state cases
+    if operation == "enable" and target_enabled then
+      notify().info(source_name .. " source is already enabled")
+      return
+    elseif operation == "disable" and not target_enabled then
+      notify().info(source_name .. " source is already disabled")
+      return
+    end
+
+    -- Determine if we should add the source
+    local should_add = (operation == "enable") or (operation == "toggle" and not target_enabled)
+
+    if should_add then
       -- Check for providers before enabling Remote
       if source_name == "Remote" then
         lsp_commands().list_providers(function(providers)
@@ -304,79 +325,22 @@ local function toggle_source(source_name)
   end)
 end
 
+---Toggle a source on/off
+---@param source_name EcologSourceName
+local function toggle_source(source_name)
+  modify_source(source_name, "toggle")
+end
+
 ---Enable a specific source
 ---@param source_name EcologSourceName
 local function enable_source(source_name)
-  lsp_commands().list_sources(function(sources)
-    local enabled_sources = {}
-    local already_enabled = false
-    local old_sources = { shell = false, file = false, remote = false }
-
-    for _, s in ipairs(sources) do
-      local key = s.name:lower()
-      if old_sources[key] ~= nil then
-        old_sources[key] = s.enabled
-      end
-      if s.enabled then
-        table.insert(enabled_sources, s.name)
-        if s.name == source_name then
-          already_enabled = true
-        end
-      end
-    end
-
-    if already_enabled then
-      notify().info(source_name .. " source is already enabled")
-      return
-    end
-
-    -- Check for providers before enabling Remote
-    if source_name == "Remote" then
-      lsp_commands().list_providers(function(providers)
-        if not providers or #providers == 0 then
-          notify().error("No remote providers available")
-          return
-        end
-        table.insert(enabled_sources, source_name)
-        lsp_commands().set_sources(enabled_sources, old_sources)
-      end)
-      return
-    end
-
-    table.insert(enabled_sources, source_name)
-    lsp_commands().set_sources(enabled_sources, old_sources)
-  end)
+  modify_source(source_name, "enable")
 end
 
 ---Disable a specific source
 ---@param source_name EcologSourceName
 local function disable_source(source_name)
-  lsp_commands().list_sources(function(sources)
-    local enabled_sources = {}
-    local was_enabled = false
-    local old_sources = { shell = false, file = false, remote = false }
-
-    for _, s in ipairs(sources) do
-      local key = s.name:lower()
-      if old_sources[key] ~= nil then
-        old_sources[key] = s.enabled
-      end
-      if s.enabled then
-        if s.name == source_name then
-          was_enabled = true
-        else
-          table.insert(enabled_sources, s.name)
-        end
-      end
-    end
-
-    if not was_enabled then
-      notify().info(source_name .. " source is already disabled")
-      return
-    end
-
-    lsp_commands().set_sources(enabled_sources, old_sources)
-  end)
+  modify_source(source_name, "disable")
 end
 
 ---Copy variable name/value at cursor

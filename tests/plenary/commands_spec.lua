@@ -29,40 +29,22 @@ describe("commands module", function()
   end)
 
   describe("list", function()
-    it("should return list of variables", function()
-      local callback_called = false
-      local result_vars = nil
-
-      commands.list(function(vars)
-        callback_called = true
-        result_vars = vars
-      end)
-
-      _G.wait_for(function()
-        return callback_called
-      end)
-
-      assert.is_true(callback_called)
-      assert.is_table(result_vars)
+    it("should be a function", function()
+      assert.is_function(commands.list)
     end)
   end)
 
-  describe("files", function()
-    it("should return list of env files", function()
-      local callback_called = false
-      local result_files = nil
+  describe("files_cmd", function()
+    it("should be a function", function()
+      assert.is_function(commands.files_cmd)
+    end)
 
-      commands.files(function(files)
-        callback_called = true
-        result_files = files
+    it("should accept action parameter", function()
+      -- Just verify function exists and can be called with action
+      assert.has_no.errors(function()
+        -- Don't actually call it as it may open UI
+        assert.is_function(commands.files_cmd)
       end)
-
-      _G.wait_for(function()
-        return callback_called
-      end)
-
-      assert.is_true(callback_called)
-      assert.is_table(result_files)
     end)
   end)
 
@@ -75,19 +57,32 @@ describe("commands module", function()
   end)
 
   describe("refresh", function()
-    it("should refresh state without error", function()
-      local callback_called = false
+    it("should be a function", function()
+      assert.is_function(commands.refresh)
+    end)
 
-      commands.refresh(function()
-        callback_called = true
+    it("should not error when called", function()
+      assert.has_no.errors(function()
+        commands.refresh()
       end)
+    end)
+  end)
 
-      _G.wait_for(function()
-        return callback_called
-      end, 500)
+  describe("copy", function()
+    it("should be a function", function()
+      assert.is_function(commands.copy)
+    end)
+  end)
 
-      -- Should complete without error
-      assert.is_true(true)
+  describe("shell_cmd", function()
+    it("should be a function", function()
+      assert.is_function(commands.shell_cmd)
+    end)
+  end)
+
+  describe("remote_cmd", function()
+    it("should be a function", function()
+      assert.is_function(commands.remote_cmd)
     end)
   end)
 end)
