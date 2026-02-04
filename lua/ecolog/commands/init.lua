@@ -2,11 +2,33 @@
 ---User command implementations
 local M = {}
 
-local lsp = require("ecolog.lsp")
-local lsp_commands = require("ecolog.lsp.commands")
-local hooks = require("ecolog.hooks")
-local state = require("ecolog.state")
-local notify = require("ecolog.notification_manager")
+-- Lazy-loaded module references (deferred to avoid loading LSP chain at module load)
+local _lsp, _lsp_commands, _hooks, _state, _notify
+
+local function lsp()
+  _lsp = _lsp or require("ecolog.lsp")
+  return _lsp
+end
+
+local function lsp_commands()
+  _lsp_commands = _lsp_commands or require("ecolog.lsp.commands")
+  return _lsp_commands
+end
+
+local function hooks()
+  _hooks = _hooks or require("ecolog.hooks")
+  return _hooks
+end
+
+local function state()
+  _state = _state or require("ecolog.state")
+  return _state
+end
+
+local function notify()
+  _notify = _notify or require("ecolog.notification_manager")
+  return _notify
+end
 
 ---@alias EcologSourceName "File"|"Shell"|"Remote"
 
@@ -70,9 +92,9 @@ local function prompt_external_auth_fields(provider, fields, opts)
   local function prompt_field(idx)
     if idx > #fields then
       -- All fields collected, authenticate
-      lsp_commands.authenticate_provider(provider, credentials, function(success, _auth_status, auth_err)
+      lsp_commands().authenticate_provider(provider, credentials, function(success, _auth_status, auth_err)
         if not success then
-          notify.error(auth_err or "Authentication failed")
+          notify().error(auth_err or "Authentication failed")
           return
         end
         opts.on_success()
@@ -97,7 +119,7 @@ local function prompt_external_auth_fields(provider, fields, opts)
     if env_val and env_val ~= "" then
       credentials[field.name] = env_val
       if opts.step_prefix then
-        notify.info(string.format("Using %s from environment", field.envVar))
+        notify().info(string.format("Using %s from environment", field.envVar))
       end
       prompt_field(idx + 1)
       return
@@ -116,7 +138,7 @@ local function prompt_external_auth_fields(provider, fields, opts)
           if input ~= "" then
             credentials[field.name] = input
           elseif field.required then
-            notify.error("Field '" .. field.label .. "' is required")
+            notify().error("Field '" .. field.label .. "' is required")
             return
           end
           prompt_field(idx + 1)
@@ -135,17 +157,17 @@ end
 ---@param opts ScopeNavOpts
 local function navigate_external_scope_levels(provider, opts)
   -- Get scope levels from the provider
-  lsp_commands.get_provider_scope_levels(provider, function(scope_levels, level_err)
+  lsp_commands().get_provider_scope_levels(provider, function(scope_levels, level_err)
     if level_err then
-      notify.error(level_err)
+      notify().error(level_err)
       return
     end
 
     if not scope_levels or #scope_levels == 0 then
       if opts.step_prefix then
-        notify.info(string.format("Provider %s is ready (no scope selection required)", provider))
+        notify().info(string.format("Provider %s is ready (no scope selection required)", provider))
       else
-        notify.info(provider .. " does not require scope selection")
+        notify().info(provider .. " does not require scope selection")
       end
       if opts.on_complete then
         opts.on_complete()
@@ -163,7 +185,7 @@ local function navigate_external_scope_levels(provider, opts)
 
     if #required_levels == 0 then
       if opts.step_prefix then
-        notify.info(string.format("Provider %s is ready", provider))
+        notify().info(string.format("Provider %s is ready", provider))
       end
       if opts.on_complete then
         opts.on_complete()
@@ -176,9 +198,9 @@ local function navigate_external_scope_levels(provider, opts)
     local function navigate_level(idx)
       if idx > #required_levels then
         -- All levels selected, fetch secrets
-        lsp_commands.select_provider_scope(provider, scope, function(success, _, err)
+        lsp_commands().select_provider_scope(provider, scope, function(success, _, err)
           if not success then
-            notify.error(err or "Failed to fetch secrets")
+            notify().error(err or "Failed to fetch secrets")
             return
           end
           if opts.on_complete then
@@ -190,14 +212,14 @@ local function navigate_external_scope_levels(provider, opts)
 
       local level = required_levels[idx]
 
-      lsp_commands.navigate_provider_scope(provider, level.name, scope, function(options, err)
+      lsp_commands().navigate_provider_scope(provider, level.name, scope, function(options, err)
         if err then
-          notify.error(err)
+          notify().error(err)
           return
         end
 
         if not options or #options == 0 then
-          notify.error("No options available for " .. level.displayName)
+          notify().error("No options available for " .. level.displayName)
           return
         end
 
@@ -244,7 +266,7 @@ end
 ---Toggle a source on/off
 ---@param source_name EcologSourceName
 local function toggle_source(source_name)
-  lsp_commands.list_sources(function(sources)
+  lsp_commands().list_sources(function(sources)
     local enabled_sources = {}
     local is_currently_enabled = false
     local old_sources = { shell = false, file = false, remote = false }
@@ -266,14 +288,14 @@ local function toggle_source(source_name)
       table.insert(enabled_sources, source_name)
     end
 
-    lsp_commands.set_sources(enabled_sources, old_sources)
+    lsp_commands().set_sources(enabled_sources, old_sources)
   end)
 end
 
 ---Enable a specific source
 ---@param source_name EcologSourceName
 local function enable_source(source_name)
-  lsp_commands.list_sources(function(sources)
+  lsp_commands().list_sources(function(sources)
     local enabled_sources = {}
     local already_enabled = false
     local old_sources = { shell = false, file = false, remote = false }
@@ -292,19 +314,19 @@ local function enable_source(source_name)
     end
 
     if already_enabled then
-      notify.info(source_name .. " source is already enabled")
+      notify().info(source_name .. " source is already enabled")
       return
     end
 
     table.insert(enabled_sources, source_name)
-    lsp_commands.set_sources(enabled_sources, old_sources)
+    lsp_commands().set_sources(enabled_sources, old_sources)
   end)
 end
 
 ---Disable a specific source
 ---@param source_name EcologSourceName
 local function disable_source(source_name)
-  lsp_commands.list_sources(function(sources)
+  lsp_commands().list_sources(function(sources)
     local enabled_sources = {}
     local was_enabled = false
     local old_sources = { shell = false, file = false, remote = false }
@@ -324,27 +346,27 @@ local function disable_source(source_name)
     end
 
     if not was_enabled then
-      notify.info(source_name .. " source is already disabled")
+      notify().info(source_name .. " source is already disabled")
       return
     end
 
-    lsp_commands.set_sources(enabled_sources, old_sources)
+    lsp_commands().set_sources(enabled_sources, old_sources)
   end)
 end
 
 ---Copy variable name/value at cursor
 ---@param what "name"|"value"
 function M.copy(what)
-  lsp_commands.get_variable_at_cursor(nil, function(var)
+  lsp_commands().get_variable_at_cursor(nil, function(var)
     if not var then
-      notify.info("No environment variable at cursor")
+      notify().info("No environment variable at cursor")
       return
     end
 
     local text
     if what == "value" then
       -- For value, fire peek hook to get unmasked value
-      var = hooks.fire_filter("on_variable_peek", var) or var
+      var = hooks().fire_filter("on_variable_peek", var) or var
       text = var.value
     else
       text = var.name
@@ -352,14 +374,14 @@ function M.copy(what)
 
     vim.fn.setreg("+", text)
     vim.fn.setreg('"', text)
-    notify.info(string.format("Copied %s: %s", what, text))
+    notify().info(string.format("Copied %s: %s", what, text))
   end)
 end
 
 ---Refresh LSP (reload env files)
 function M.refresh()
-  lsp.restart()
-  notify.info("LSP restarted")
+  lsp().restart()
+  notify().info("LSP restarted")
 end
 
 ---Open variable picker
@@ -375,9 +397,9 @@ function M.files_cmd(action)
     local pickers = require("ecolog.pickers")
     pickers.pick_files()
   elseif action == "open_active" then
-    local active_files = state.get_active_files()
+    local active_files = state().get_active_files()
     if #active_files == 0 then
-      notify.info("No active env file")
+      notify().info("No active env file")
     elseif #active_files == 1 then
       vim.cmd.edit(active_files[1])
     else
@@ -419,9 +441,9 @@ function M.remote_cmd(action, provider)
     disable_source("Remote")
   elseif action == "list" then
     -- List all providers
-    lsp_commands.list_providers(function(providers)
+    lsp_commands().list_providers(function(providers)
       if #providers == 0 then
-        notify.info("No remote providers configured")
+        notify().info("No remote providers configured")
         return
       end
 
@@ -433,17 +455,17 @@ function M.remote_cmd(action, provider)
         table.insert(lines, string.format("  %s %s [%s]%s%s", auth_icon, p.displayName, p.authStatus, count_str, error_str))
       end
 
-      notify.info(table.concat(lines, "\n"))
+      notify().info(table.concat(lines, "\n"))
     end)
   elseif action == "auth" then
     -- Authenticate with a provider
     if not provider then
       -- Show picker for providers
-      lsp_commands.list_providers(function(providers)
+      lsp_commands().list_providers(function(providers)
         local items = build_external_provider_items(providers)
 
         if #items == 0 then
-          notify.error("No remote providers available")
+          notify().error("No remote providers available")
           return
         end
 
@@ -466,14 +488,14 @@ function M.remote_cmd(action, provider)
     end
 
     -- Get auth fields for provider
-    lsp_commands.get_provider_auth_fields(provider, function(fields, err)
+    lsp_commands().get_provider_auth_fields(provider, function(fields, err)
       if err then
-        notify.error(err)
+        notify().error(err)
         return
       end
 
       if not fields or #fields == 0 then
-        notify.info(provider .. " does not require authentication fields")
+        notify().info(provider .. " does not require authentication fields")
         return
       end
 
@@ -498,7 +520,7 @@ function M.remote_cmd(action, provider)
     -- Interactive scope selection
     if not provider then
       -- Show picker for authenticated providers
-      lsp_commands.list_providers(function(providers)
+      lsp_commands().list_providers(function(providers)
         local auth_items = {}
 
         for _, p in ipairs(providers) do
@@ -511,7 +533,7 @@ function M.remote_cmd(action, provider)
         end
 
         if #auth_items == 0 then
-          notify.error("No authenticated remote providers. Use ':Ecolog remote auth' first.")
+          notify().error("No authenticated remote providers. Use ':Ecolog remote auth' first.")
           return
         end
 
@@ -534,16 +556,16 @@ function M.remote_cmd(action, provider)
     end
 
     -- Scope selection for specific provider
-    lsp_commands.list_providers(function(providers)
+    lsp_commands().list_providers(function(providers)
       local ext_provider = find_source_by_id(providers, provider)
 
       if not ext_provider then
-        notify.error("Unknown provider: " .. provider)
+        notify().error("Unknown provider: " .. provider)
         return
       end
 
       if not ext_provider.isAuthenticated then
-        notify.error(provider .. " is not authenticated. Use ':Ecolog remote auth " .. provider .. "' first.")
+        notify().error(provider .. " is not authenticated. Use ':Ecolog remote auth " .. provider .. "' first.")
         return
       end
 
@@ -553,19 +575,19 @@ function M.remote_cmd(action, provider)
     -- Refresh secrets
     if provider then
       -- Specific provider refresh
-      lsp_commands.refresh_provider(provider, function(success, _, err)
+      lsp_commands().refresh_provider(provider, function(success, _, err)
         if not success then
-          notify.error(err or "Failed to refresh provider")
+          notify().error(err or "Failed to refresh provider")
         end
       end)
     else
       -- Refresh all providers
-      lsp_commands.refresh_provider(nil, function(success, results, err)
+      lsp_commands().refresh_provider(nil, function(success, results, err)
         if success then
           local count = results and results.count or 0
-          notify.info(string.format("Refreshed %d provider(s)", count))
+          notify().info(string.format("Refreshed %d provider(s)", count))
         else
-          notify.error(err or "Failed to refresh")
+          notify().error(err or "Failed to refresh")
         end
       end)
     end
@@ -573,9 +595,9 @@ function M.remote_cmd(action, provider)
     -- Shutdown an external provider
     if not provider then
       -- Show picker to select provider
-      lsp_commands.list_providers(function(providers)
+      lsp_commands().list_providers(function(providers)
         if #providers == 0 then
-          notify.error("No external providers running")
+          notify().error("No external providers running")
           return
         end
 
@@ -597,9 +619,9 @@ function M.remote_cmd(action, provider)
       return
     end
 
-    lsp_commands.shutdown_provider(provider, function(success, err)
+    lsp_commands().shutdown_provider(provider, function(success, err)
       if not success then
-        notify.error(err or "Failed to shutdown provider")
+        notify().error(err or "Failed to shutdown provider")
       end
     end)
   else
@@ -612,29 +634,29 @@ end
 ---@param action? string "enable"|"disable"|"toggle"|nil
 function M.interpolation_cmd(action)
   if action == "enable" then
-    lsp_commands.set_interpolation(true, function(success)
+    lsp_commands().set_interpolation(true, function(success)
       if success then
-        notify.info("Interpolation enabled")
+        notify().info("Interpolation enabled")
       else
-        notify.error("Failed to enable interpolation")
+        notify().error("Failed to enable interpolation")
       end
     end)
   elseif action == "disable" then
-    lsp_commands.set_interpolation(false, function(success)
+    lsp_commands().set_interpolation(false, function(success)
       if success then
-        notify.info("Interpolation disabled")
+        notify().info("Interpolation disabled")
       else
-        notify.error("Failed to disable interpolation")
+        notify().error("Failed to disable interpolation")
       end
     end)
   else
     -- Default: toggle
-    local current = state.get_interpolation_enabled()
-    lsp_commands.set_interpolation(not current, function(success, enabled)
+    local current = state().get_interpolation_enabled()
+    lsp_commands().set_interpolation(not current, function(success, enabled)
       if success then
-        notify.info("Interpolation " .. (enabled and "enabled" or "disabled"))
+        notify().info("Interpolation " .. (enabled and "enabled" or "disabled"))
       else
-        notify.error("Failed to toggle interpolation")
+        notify().error("Failed to toggle interpolation")
       end
     end)
   end
@@ -642,9 +664,9 @@ end
 
 ---List workspaces
 function M.workspaces()
-  lsp_commands.list_workspaces(function(workspaces)
+  lsp_commands().list_workspaces(function(workspaces)
     if #workspaces == 0 then
-      notify.info("No workspaces found")
+      notify().info("No workspaces found")
       return
     end
 
@@ -654,7 +676,7 @@ function M.workspaces()
       table.insert(lines, string.format("%s%s (%s)", marker, ws.name, ws.path))
     end
 
-    notify.info(table.concat(lines, "\n"))
+    notify().info(table.concat(lines, "\n"))
   end)
 end
 
@@ -668,11 +690,11 @@ function M.root(path)
     path = vim.fn.fnamemodify(path, ":p")
   end
 
-  lsp_commands.set_root(path, function(success, root)
+  lsp_commands().set_root(path, function(success, root)
     if success and root then
-      notify.info("Workspace root set to: " .. root)
+      notify().info("Workspace root set to: " .. root)
     else
-      notify.error("Failed to set workspace root")
+      notify().error("Failed to set workspace root")
     end
   end)
 end
@@ -703,9 +725,9 @@ end
 ---Internal: Execute the generate example command
 ---@param output string The output path or "-" for buffer
 function M._do_generate_example(output)
-  lsp_commands.generate_example(function(content, count)
+  lsp_commands().generate_example(function(content, count)
     if count == 0 or content == "" then
-      notify.info("No environment variables found in workspace")
+      notify().info("No environment variables found in workspace")
       return
     end
 
@@ -716,16 +738,16 @@ function M._do_generate_example(output)
       vim.bo.bufhidden = "wipe"
       vim.bo.filetype = "dotenv"
       vim.api.nvim_buf_set_lines(0, 0, -1, false, vim.split(content, "\n"))
-      notify.info(string.format("Generated example with %d variables", count))
+      notify().info(string.format("Generated example with %d variables", count))
     else
       -- Write to file
       local file = io.open(output, "w")
       if file then
         file:write(content)
         file:close()
-        notify.info(string.format("Generated %s with %d variables", output, count))
+        notify().info(string.format("Generated %s with %d variables", output, count))
       else
-        notify.error("Failed to write " .. output)
+        notify().error("Failed to write " .. output)
       end
     end
   end)
@@ -735,7 +757,7 @@ end
 ---@param provider? string Optional provider ID to skip provider selection
 function M._remote_setup_wizard(provider)
   -- Step 1: Ensure Remote source is enabled
-  lsp_commands.list_sources(function(sources)
+  lsp_commands().list_sources(function(sources)
     local remote_enabled = false
     local enabled_sources = {}
     local old_sources = { shell = false, file = false, remote = false }
@@ -769,7 +791,7 @@ function M._remote_setup_wizard(provider)
       -- Enable Remote source first
       table.insert(enabled_sources, "Remote")
       -- Note: set_sources already sends a notification, so we don't add another
-      lsp_commands.set_sources(enabled_sources, old_sources, function()
+      lsp_commands().set_sources(enabled_sources, old_sources, function()
         vim.schedule(continue_setup)
       end)
     else
@@ -781,11 +803,11 @@ end
 ---Helper: Show provider picker with status icons
 ---@param on_select fun(provider_id: string) Callback when provider is selected
 function M._setup_provider_picker(on_select)
-  lsp_commands.list_providers(function(providers)
+  lsp_commands().list_providers(function(providers)
     local items = build_external_provider_items(providers)
 
     if #items == 0 then
-      notify.error("No remote providers available")
+      notify().error("No remote providers available")
       return
     end
 
@@ -810,7 +832,7 @@ end
 ---@param provider string Provider ID
 ---@param step_prefix string Prefix for step indicators (e.g., "Setup")
 function M._setup_auth_then_scope(provider, step_prefix)
-  lsp_commands.list_providers(function(providers)
+  lsp_commands().list_providers(function(providers)
     local ext_provider = find_source_by_id(providers, provider)
 
     if ext_provider and ext_provider.isAuthenticated then
@@ -820,9 +842,9 @@ function M._setup_auth_then_scope(provider, step_prefix)
     end
 
     -- Need to authenticate
-    lsp_commands.get_provider_auth_fields(provider, function(fields, err)
+    lsp_commands().get_provider_auth_fields(provider, function(fields, err)
       if err then
-        notify.error(err)
+        notify().error(err)
         return
       end
 
@@ -849,16 +871,16 @@ end
 ---@param provider string Provider ID
 ---@param step_prefix string Prefix for step indicators
 function M._setup_scope_selection(provider, step_prefix)
-  lsp_commands.list_providers(function(providers)
+  lsp_commands().list_providers(function(providers)
     local ext_provider = find_source_by_id(providers, provider)
 
     if not ext_provider then
-      notify.error("Unknown provider: " .. provider)
+      notify().error("Unknown provider: " .. provider)
       return
     end
 
     if not ext_provider.isAuthenticated then
-      notify.error(provider .. " is not authenticated")
+      notify().error(provider .. " is not authenticated")
       return
     end
 
@@ -870,7 +892,7 @@ end
 
 ---Show ecolog info
 function M.info()
-  local client = lsp.get_client()
+  local client = lsp().get_client()
   local lines = { "ecolog.nvim" }
 
   if client then
@@ -882,7 +904,7 @@ function M.info()
     table.insert(lines, "  LSP: Not running")
   end
 
-  local active_files = state.get_active_files()
+  local active_files = state().get_active_files()
   if #active_files > 0 then
     if #active_files == 1 then
       table.insert(lines, string.format("  Active file: %s", active_files[1]))
@@ -894,17 +916,17 @@ function M.info()
     end
   end
 
-  local var_count = state.get_var_count()
+  local var_count = state().get_var_count()
   if var_count > 0 then
     table.insert(lines, string.format("  Variables: %d", var_count))
   end
 
-  local hook_names = hooks.list()
+  local hook_names = hooks().list()
   if #hook_names > 0 then
     table.insert(lines, "  Hooks: " .. table.concat(hook_names, ", "))
   end
 
-  notify.info(table.concat(lines, "\n"))
+  notify().info(table.concat(lines, "\n"))
 end
 
 ---Register user commands
@@ -938,7 +960,7 @@ function M._register_commands()
     elseif subcommand == "interpolation" then
       M.interpolation_cmd(action)
     else
-      notify.error(
+      notify().error(
         "Unknown subcommand. Available: copy, refresh, list, files, shell, remote, workspaces, root, generate, info, interpolation"
       )
     end

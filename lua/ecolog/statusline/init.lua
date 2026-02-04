@@ -10,6 +10,9 @@ local config = nil
 -- Highlight utilities
 local hl = {}
 
+-- Flag to track if highlights have been initialized (deferred for faster setup)
+local highlights_initialized = false
+
 ---Check if string is a hex color (#RRGGBB)
 ---@param str any
 ---@return boolean
@@ -74,8 +77,8 @@ local function setup_single_highlight(spec, base_name, hex_name)
   end
 end
 
----Setup all highlight groups based on config
-function hl.setup_highlights()
+---Setup all highlight groups based on config (internal)
+local function do_setup_highlights()
   local cfg = M._get_config()
   if not cfg.highlights.enabled then
     return
@@ -109,6 +112,22 @@ function hl.setup_highlights()
   if cfg.highlights.interpolation_disabled then
     setup_single_highlight(cfg.highlights.interpolation_disabled, "EcologStatusInterpolationDisabled", "EcologStatusInterpolationDisabledHex")
   end
+end
+
+---Ensure highlights are set up (deferred initialization on first use)
+function hl.ensure_highlights()
+  if highlights_initialized then
+    return
+  end
+  highlights_initialized = true
+  do_setup_highlights()
+end
+
+---Setup all highlight groups based on config (public API for ColorScheme autocmd)
+function hl.setup_highlights()
+  -- Reset flag so next ensure_highlights() call will re-run setup
+  highlights_initialized = false
+  -- Don't actually set up now - let ensure_highlights() do it on next use
 end
 
 ---Resolve config spec to actual highlight group name
@@ -315,6 +334,9 @@ end
 ---Get statusline string with highlights (for generic statusline)
 ---@return string
 function M.get_statusline()
+  -- Ensure highlights are set up (deferred initialization)
+  hl.ensure_highlights()
+
   local cfg = M._get_config()
   local status = get_status_data()
 

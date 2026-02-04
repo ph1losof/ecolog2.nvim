@@ -197,29 +197,8 @@ function M.setup(lsp_config)
   -- Create autocmd to manually attach LSP to all buffers (not just configured filetypes)
   local augroup = vim.api.nvim_create_augroup("ecolog-lsp-attach", { clear = true })
 
-  vim.api.nvim_create_autocmd({ "BufReadPost", "BufNewFile" }, {
-    group = augroup,
-    callback = function(event)
-      if not should_attach(event.buf) then
-        return
-      end
-      -- Use vim.lsp.start to attach ecolog to this buffer
-      vim.lsp.start({
-        name = "ecolog",
-        cmd = config.cmd,
-        root_dir = config.settings.workspace and config.settings.workspace.root or vim.fn.getcwd(),
-        init_options = config.init_options,
-        settings = config.settings,
-        capabilities = vim.lsp.protocol.make_client_capabilities(),
-        on_init = on_init,
-        on_attach = on_attach,
-      }, { bufnr = event.buf })
-    end,
-  })
-
-  -- Start the LSP immediately (without requiring a valid buffer)
-  -- This ensures the LSP is running even when Neovim starts with oil.nvim or similar
-  vim.lsp.start({
+  -- Build LSP start config once for reuse
+  local lsp_start_config = {
     name = "ecolog",
     cmd = config.cmd,
     root_dir = config.settings.workspace and config.settings.workspace.root or vim.fn.getcwd(),
@@ -228,21 +207,24 @@ function M.setup(lsp_config)
     capabilities = vim.lsp.protocol.make_client_capabilities(),
     on_init = on_init,
     on_attach = on_attach,
+  }
+
+  vim.api.nvim_create_autocmd({ "BufReadPost", "BufNewFile" }, {
+    group = augroup,
+    callback = function(event)
+      if not should_attach(event.buf) then
+        return
+      end
+      -- Start or attach the LSP to this buffer
+      vim.lsp.start(lsp_start_config, { bufnr = event.buf })
+    end,
   })
 
-  -- Attach to current buffer if valid
+  -- LSP starts on first buffer via autocmd above (deferred startup for faster setup)
+  -- If current buffer is already valid, trigger attachment immediately
   local current_buf = vim.api.nvim_get_current_buf()
   if should_attach(current_buf) then
-    vim.lsp.start({
-      name = "ecolog",
-      cmd = config.cmd,
-      root_dir = config.settings.workspace and config.settings.workspace.root or vim.fn.getcwd(),
-      init_options = config.init_options,
-      settings = config.settings,
-      capabilities = vim.lsp.protocol.make_client_capabilities(),
-      on_init = on_init,
-      on_attach = on_attach,
-    }, { bufnr = current_buf })
+    vim.lsp.start(lsp_start_config, { bufnr = current_buf })
   end
 
   is_setup_done = true

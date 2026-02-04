@@ -135,14 +135,11 @@ function M.setup(lsp_config)
     end,
   })
 
-  -- Start the LSP immediately (without requiring a valid buffer)
-  -- This ensures the LSP is running even when Neovim starts with oil.nvim or similar
-  -- If current buffer is valid, attach to it directly
+  -- LSP starts on first buffer via autocmd above (deferred startup for faster setup)
+  -- If current buffer is already valid, trigger attachment immediately
   local current_buf = vim.api.nvim_get_current_buf()
   if should_attach(current_buf) then
     vim.lsp.start(lsp_start_config, { bufnr = current_buf })
-  else
-    vim.lsp.start(lsp_start_config)
   end
 
   is_configured = true

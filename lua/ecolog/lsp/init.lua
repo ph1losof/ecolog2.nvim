@@ -10,6 +10,13 @@ local notify = require("ecolog.notification_manager")
 
 ---@alias EcologResolvedBackend "native"|"lspconfig"|"external"
 
+---Check if lspconfig is available (direct check without loading our module)
+---@return boolean
+local function is_lspconfig_available()
+  local ok = pcall(require, "lspconfig")
+  return ok
+end
+
 ---Resolve backend from config to actual implementation
 ---@param backend EcologLspBackend
 ---@return EcologResolvedBackend
@@ -30,8 +37,8 @@ local function resolve_backend(backend)
 
   -- Force lspconfig
   if backend == "lspconfig" then
-    local lspconfig_mod = require("ecolog.lsp.lspconfig")
-    if not lspconfig_mod.is_available() then
+    -- Direct check avoids loading our lspconfig module just to check availability
+    if not is_lspconfig_available() then
       return "lspconfig", "backend = 'lspconfig' requires nvim-lspconfig. Install it or use backend = 'native'."
     end
     return "lspconfig", nil
@@ -42,8 +49,8 @@ local function resolve_backend(backend)
     return "native", nil
   end
 
-  local lspconfig_mod = require("ecolog.lsp.lspconfig")
-  if lspconfig_mod.is_available() then
+  -- On older Neovim, check lspconfig availability directly (avoids loading our module)
+  if is_lspconfig_available() then
     return "lspconfig", nil
   end
 
