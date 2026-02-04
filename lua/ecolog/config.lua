@@ -26,6 +26,18 @@ local M = {}
 ---@class EcologSourcesConfig
 ---@field defaults? EcologSourceDefaults Default enable states for sources
 
+---@class EcologProviderConfig
+---@field enabled? boolean Enable this provider (default: false)
+---@field binary? string Override binary path for this provider
+
+---@class EcologProvidersConfig
+---@field path? string Directory containing provider binaries (default: ~/.local/share/ecolog/providers)
+---@field doppler? EcologProviderConfig Doppler provider config
+---@field aws? EcologProviderConfig AWS Secrets Manager provider config
+---@field vault? EcologProviderConfig HashiCorp Vault provider config
+---@field infisical? EcologProviderConfig Infisical provider config
+---@field [string] EcologProviderConfig Any other provider config
+
 ---@class EcologLspConfig
 ---@field backend? EcologLspBackend LSP setup backend (default: "auto")
 ---@field client? string Client name to match when backend=false (default: "ecolog")
@@ -38,6 +50,7 @@ local M = {}
 ---@field init_options? table LSP initialization options (interpolation, features, etc.)
 ---@field settings? table Additional LSP settings to send to server
 ---@field sources? EcologSourcesConfig Source configuration (defaults, etc.)
+---@field providers? EcologProvidersConfig External provider configuration
 
 ---@class EcologPickerKeymaps
 ---@field copy_value? string Copy variable value (default: "<C-y>")
@@ -114,6 +127,11 @@ local DEFAULT_CONFIG = {
         file = true,
         remote = false,
       },
+    },
+    providers = {
+      path = vim.fn.expand("~/.local/share/ecolog/providers"),
+      -- Individual providers configured here, e.g.:
+      -- doppler = { enabled = true },
     },
   },
   picker = {

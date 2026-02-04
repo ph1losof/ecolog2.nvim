@@ -71,6 +71,11 @@ function M.build(user_config)
     base_settings.sources = user_config.sources
   end
 
+  -- Add providers config if provided
+  if user_config.providers then
+    base_settings.providers = user_config.providers
+  end
+
   -- Merge with any additional user settings
   local settings = vim.tbl_deep_extend("force", base_settings, user_config.settings or {})
 

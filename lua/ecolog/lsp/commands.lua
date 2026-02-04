@@ -557,34 +557,9 @@ function M.get_interpolation(callback)
   end)
 end
 
--- Remote Source Commands
-
----@class EcologRemoteSource
----@field id string Provider ID (e.g., "doppler", "aws")
----@field displayName string Human-readable name
----@field shortName string Short name for UI
----@field authStatus string Authentication status string
----@field isAuthenticated boolean Whether currently authenticated
----@field scope table Current scope selection
----@field secretCount number Number of secrets loaded
----@field scopeLevels table[] Available scope levels
-
----List all registered remote sources
----@param callback fun(sources: EcologRemoteSource[], availableProviders: string[])
-function M.list_remote_sources(callback)
-  lsp.execute_command("ecolog.source.remote.list", {}, function(err, result)
-    if err then
-      notify.error(err.message or "Failed to list remote sources")
-      callback({}, {})
-      return
-    end
-
-    local sources = result and result.sources or {}
-    local available = result and result.availableProviders or {}
-
-    callback(sources, available)
-  end)
-end
+-- ============================================================================
+-- External Provider Commands (out-of-process providers)
+-- ============================================================================
 
 ---@class EcologAuthField
 ---@field name string Field name/key
@@ -595,11 +570,62 @@ end
 ---@field envVar? string Environment variable that provides this value
 ---@field default? string Default value
 
----Get authentication fields for a provider
+---@class EcologScopeOption
+---@field id string Option ID
+---@field displayName string Human-readable name
+---@field description? string Optional description
+---@field icon? string Optional icon
+
+---@class EcologExternalProvider
+---@field id string Provider ID (e.g., "doppler", "aws")
+---@field displayName string Human-readable name
+---@field shortName string Short name for UI
+---@field authStatus string Authentication status string
+---@field isAuthenticated boolean Whether currently authenticated
+---@field scope table Current scope selection
+---@field secretCount number Number of secrets loaded
+---@field loading boolean Whether provider is currently loading
+---@field lastError? string Last error message if any
+
+---List all registered external providers
+---@param callback fun(providers: EcologExternalProvider[])
+function M.list_providers(callback)
+  lsp.execute_command("ecolog.provider.list", {}, function(err, result)
+    if err then
+      notify.error(err.message or "Failed to list providers")
+      callback({})
+      return
+    end
+
+    local providers = result and result.providers or {}
+    callback(providers)
+  end)
+end
+
+---Spawn/start an external provider
+---@param provider string Provider ID
+---@param callback fun(success: boolean, error: string|nil)
+function M.spawn_provider(provider, callback)
+  lsp.execute_command("ecolog.provider.spawn", { provider }, function(err, result)
+    if err then
+      callback(false, err.message or "Failed to spawn provider")
+      return
+    end
+
+    if result and result.error then
+      callback(false, result.error)
+      return
+    end
+
+    callback(result and result.success or false, nil)
+  end)
+end
+
+---Get authentication fields for an external provider
 ---@param provider string Provider ID
 ---@param callback fun(fields: EcologAuthField[]|nil, error: string|nil)
-function M.get_remote_auth_fields(provider, callback)
-  lsp.execute_command("ecolog.source.remote.authFields", { provider }, function(err, result)
+function M.get_provider_auth_fields(provider, callback)
+  lsp.execute_command("ecolog.provider.authFields", { provider }, function(err, result)
     if err then
       callback(nil, err.message or "Failed to get auth fields")
       return
@@ -614,12 +640,12 @@ function M.get_remote_auth_fields(provider, callback)
   end)
 end
 
----Authenticate with a remote provider
+---Authenticate with an external provider
 ---@param provider string Provider ID
 ---@param credentials table<string, string> Credentials map
 ---@param callback fun(success: boolean, authStatus: string|nil, error: string|nil)
-function M.authenticate_remote(provider, credentials, callback)
-  lsp.execute_command("ecolog.source.remote.authenticate", { provider, credentials }, function(err, result)
+function M.authenticate_provider(provider, credentials, callback)
+  lsp.execute_command("ecolog.provider.authenticate", { provider, credentials }, function(err, result)
     if err then
       callback(false, nil, err.message or "Authentication failed")
       return
@@ -641,24 +667,42 @@ function M.authenticate_remote(provider, credentials, callback)
   end)
 end
 
----@class EcologScopeOption
----@field id string Option ID
+---@class EcologScopeLevel
+---@field name string Level name/key (e.g., "project", "config")
 ---@field displayName string Human-readable name
----@field description? string Optional description
----@field icon? string Optional icon
+---@field required boolean Whether this level is required
 
----Navigate scope options for a remote provider
+---Get scope levels for an external provider
+---@param provider string Provider ID
+---@param callback fun(levels: EcologScopeLevel[]|nil, error: string|nil)
+function M.get_provider_scope_levels(provider, callback)
+  lsp.execute_command("ecolog.provider.scopeLevels", { provider }, function(err, result)
+    if err then
+      callback(nil, err.message or "Failed to get scope levels")
+      return
+    end
+
+    if result and result.error then
+      callback(nil, result.error)
+      return
+    end
+
+    callback(result and result.levels or {}, nil)
+  end)
+end
+
+---Navigate scope options for an external provider
 ---@param provider string Provider ID
 ---@param level string Scope level name
 ---@param parentScope? table Parent scope selection
 ---@param callback fun(options: EcologScopeOption[]|nil, error: string|nil)
-function M.navigate_remote_scope(provider, level, parentScope, callback)
+function M.navigate_provider_scope(provider, level, parentScope, callback)
   local args = { provider, level }
   if parentScope then
     table.insert(args, parentScope)
   end
 
-  lsp.execute_command("ecolog.source.remote.navigate", args, function(err, result)
+  lsp.execute_command("ecolog.provider.navigate", args, function(err, result)
     if err then
       callback(nil, err.message or "Failed to navigate scope")
       return
@@ -673,12 +717,12 @@ function M.navigate_remote_scope(provider, level, parentScope, callback)
   end)
 end
 
----Select scope and fetch secrets from a remote provider
+---Select scope and fetch secrets from an external provider
 ---@param provider string Provider ID
 ---@param scope table Scope selection
 ---@param callback fun(success: boolean, secretCount: number|nil, error: string|nil)
-function M.select_remote_scope(provider, scope, callback)
-  lsp.execute_command("ecolog.source.remote.select", { provider, scope }, function(err, result)
+function M.select_provider_scope(provider, scope, callback)
+  lsp.execute_command("ecolog.provider.select", { provider, scope }, function(err, result)
     if err then
       callback(false, nil, err.message or "Failed to select scope")
       return
@@ -710,13 +754,13 @@ function M.select_remote_scope(provider, scope, callback)
   end)
 end
 
----Refresh secrets from a remote provider (or all if provider is nil)
+---Refresh secrets from an external provider (or all if provider is nil)
 ---@param provider? string Provider ID (nil for all)
 ---@param callback fun(success: boolean, results: table|nil, error: string|nil)
-function M.refresh_remote(provider, callback)
+function M.refresh_provider(provider, callback)
   local args = provider and { provider } or {}
 
-  lsp.execute_command("ecolog.source.remote.refresh", args, function(err, result)
+  lsp.execute_command("ecolog.provider.refresh", args, function(err, result)
     if err then
       callback(false, nil, err.message or "Failed to refresh")
       return
@@ -730,7 +774,7 @@ function M.refresh_remote(provider, callback)
     local success = result and (result.success or result.results)
 
     if success then
-      notify.info("Remote secrets refreshed")
+      notify.info("Provider secrets refreshed")
 
       -- Invalidate statusline cache
       local statusline_ok, statusline = pcall(require, "ecolog.statusline")
@@ -744,6 +788,30 @@ function M.refresh_remote(provider, callback)
     end
 
     callback(success, result, nil)
+  end)
+end
+
+---Shutdown an external provider
+---@param provider string Provider ID
+---@param callback fun(success: boolean, error: string|nil)
+function M.shutdown_provider(provider, callback)
+  lsp.execute_command("ecolog.provider.shutdown", { provider }, function(err, result)
+    if err then
+      callback(false, err.message or "Failed to shutdown provider")
+      return
+    end
+
+    if result and result.error then
+      callback(false, result.error)
+      return
+    end
+
+    local success = result and result.success
+    if success then
+      notify.info("Shut down " .. provider)
+    end
+
+    callback(success, nil)
   end)
 end
 

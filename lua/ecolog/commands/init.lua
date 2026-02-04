@@ -15,9 +15,9 @@ local notify = require("ecolog.notification_manager")
 -- ============================================================================
 
 ---Find a source by provider ID from a sources list
----@param sources EcologRemoteSource[]
+---@param sources EcologExternalProvider[]
 ---@param provider_id string
----@return EcologRemoteSource|nil
+---@return EcologExternalProvider|nil
 local function find_source_by_id(sources, provider_id)
   for _, src in ipairs(sources) do
     if src.id == provider_id then
@@ -27,46 +27,27 @@ local function find_source_by_id(sources, provider_id)
   return nil
 end
 
----Build provider picker items with status icons
----@param sources EcologRemoteSource[]
----@param available_providers? string[]
+---Build provider picker items with status icons from external providers
+---@param providers EcologExternalProvider[]
 ---@return table[] items
-local function build_provider_items(sources, available_providers)
+local function build_external_provider_items(providers)
   local items = {}
 
-  -- Add configured sources with their auth status
-  for _, src in ipairs(sources) do
-    local icon = src.isAuthenticated and "✓" or "○"
-    local status = src.isAuthenticated and "Authenticated" or src.authStatus
+  for _, provider in ipairs(providers) do
+    local icon = provider.isAuthenticated and "✓" or "○"
+    local status = provider.isAuthenticated and "Authenticated" or provider.authStatus
+    local count_str = provider.secretCount > 0 and string.format(" (%d)", provider.secretCount) or ""
     table.insert(items, {
-      id = src.id,
-      name = src.displayName,
+      id = provider.id,
+      name = provider.displayName,
       icon = icon,
-      status = status,
-      authenticated = src.isAuthenticated,
+      status = status .. count_str,
+      authenticated = provider.isAuthenticated,
+      secretCount = provider.secretCount,
+      loading = provider.loading,
+      lastError = provider.lastError,
+      isExternal = true,
     })
-  end
-
-  -- Add available (but not yet configured) providers
-  if available_providers then
-    for _, provider_id in ipairs(available_providers) do
-      local already_added = false
-      for _, item in ipairs(items) do
-        if item.id == provider_id then
-          already_added = true
-          break
-        end
-      end
-      if not already_added then
-        table.insert(items, {
-          id = provider_id,
-          name = provider_id:gsub("^%l", string.upper),
-          icon = "○",
-          status = "Not configured",
-          authenticated = false,
-        })
-      end
-    end
   end
 
   return items
@@ -76,19 +57,20 @@ end
 ---@field on_success fun() Callback after successful auth
 ---@field step_prefix? string Optional step indicator prefix (e.g., "Setup")
 ---@field total_steps? number Total number of steps for step indicator
+---@field is_external? boolean Whether this is for an external provider
 
----Prompt for auth fields and authenticate
+---Prompt for auth fields and authenticate (external provider)
 ---@param provider string
 ---@param fields EcologAuthField[]
 ---@param opts AuthPromptOpts
-local function prompt_auth_fields(provider, fields, opts)
+local function prompt_external_auth_fields(provider, fields, opts)
   local credentials = {}
   local total_fields = #fields
 
   local function prompt_field(idx)
     if idx > #fields then
       -- All fields collected, authenticate
-      lsp_commands.authenticate_remote(provider, credentials, function(success, _auth_status, auth_err)
+      lsp_commands.authenticate_provider(provider, credentials, function(success, _auth_status, auth_err)
         if not success then
           notify.error(auth_err or "Authentication failed")
           return
@@ -148,110 +130,110 @@ local function prompt_auth_fields(provider, fields, opts)
   end)
 end
 
----@class ScopeNavOpts
----@field step_prefix? string Optional step indicator prefix (e.g., "Setup")
----@field on_complete? fun() Optional completion callback (default: no-op)
-
----Navigate through scope levels and select
+---Navigate through scope levels and select (external provider)
 ---@param provider string
----@param source EcologRemoteSource
 ---@param opts ScopeNavOpts
-local function navigate_scope_levels(provider, source, opts)
-  local scope_levels = source.scopeLevels or {}
-  if #scope_levels == 0 then
-    if opts.step_prefix then
-      local count = source.secretCount or 0
-      notify.info(string.format("Loaded %d secrets from %s", count, source.displayName))
-    else
-      notify.info(provider .. " does not require scope selection")
-    end
-    if opts.on_complete then
-      opts.on_complete()
-    end
-    return
-  end
-
-  -- Collect required levels
-  local required_levels = {}
-  for _, level in ipairs(scope_levels) do
-    if level.required then
-      table.insert(required_levels, level)
-    end
-  end
-
-  if #required_levels == 0 then
-    if opts.step_prefix then
-      local count = source.secretCount or 0
-      notify.info(string.format("Loaded %d secrets from %s", count, source.displayName))
-    end
-    if opts.on_complete then
-      opts.on_complete()
-    end
-    return
-  end
-
-  local scope = { selections = {} }
-
-  local function navigate_level(idx)
-    if idx > #required_levels then
-      -- All levels selected, fetch secrets
-      lsp_commands.select_remote_scope(provider, scope, function(success, _, err)
-        if not success then
-          notify.error(err or "Failed to fetch secrets")
-          return
-        end
-        if opts.on_complete then
-          opts.on_complete()
-        end
-      end)
+local function navigate_external_scope_levels(provider, opts)
+  -- Get scope levels from the provider
+  lsp_commands.get_provider_scope_levels(provider, function(scope_levels, level_err)
+    if level_err then
+      notify.error(level_err)
       return
     end
 
-    local level = required_levels[idx]
-
-    lsp_commands.navigate_remote_scope(provider, level.name, scope, function(options, err)
-      if err then
-        notify.error(err)
-        return
+    if not scope_levels or #scope_levels == 0 then
+      if opts.step_prefix then
+        notify.info(string.format("Provider %s is ready (no scope selection required)", provider))
+      else
+        notify.info(provider .. " does not require scope selection")
       end
-
-      if not options or #options == 0 then
-        notify.error("No options available for " .. level.displayName)
-        return
+      if opts.on_complete then
+        opts.on_complete()
       end
+      return
+    end
 
-      vim.defer_fn(function()
-        local prompt_text
-        if opts.step_prefix then
-          local step_num = 2 + idx -- After provider (1) and auth (2)
-          local total_steps = 2 + #required_levels
-          prompt_text = string.format("%s (%d/%d): Select %s", opts.step_prefix, step_num, total_steps, level.displayName)
-        else
-          prompt_text = "Select " .. level.displayName .. ":"
-        end
+    -- Collect required levels
+    local required_levels = {}
+    for _, level in ipairs(scope_levels) do
+      if level.required then
+        table.insert(required_levels, level)
+      end
+    end
 
-        vim.ui.select(options, {
-          prompt = prompt_text,
-          format_item = function(item)
-            if item.description then
-              return string.format("%s - %s", item.displayName, item.description)
-            end
-            return item.displayName
-          end,
-        }, function(selected)
-          if selected then
-            vim.schedule(function()
-              scope.selections[level.name] = { selected.id }
-              navigate_level(idx + 1)
-            end)
+    if #required_levels == 0 then
+      if opts.step_prefix then
+        notify.info(string.format("Provider %s is ready", provider))
+      end
+      if opts.on_complete then
+        opts.on_complete()
+      end
+      return
+    end
+
+    local scope = { selections = {} }
+
+    local function navigate_level(idx)
+      if idx > #required_levels then
+        -- All levels selected, fetch secrets
+        lsp_commands.select_provider_scope(provider, scope, function(success, _, err)
+          if not success then
+            notify.error(err or "Failed to fetch secrets")
+            return
+          end
+          if opts.on_complete then
+            opts.on_complete()
           end
         end)
-      end, 10)
-    end)
-  end
+        return
+      end
 
-  vim.schedule(function()
-    navigate_level(1)
+      local level = required_levels[idx]
+
+      lsp_commands.navigate_provider_scope(provider, level.name, scope, function(options, err)
+        if err then
+          notify.error(err)
+          return
+        end
+
+        if not options or #options == 0 then
+          notify.error("No options available for " .. level.displayName)
+          return
+        end
+
+        vim.defer_fn(function()
+          local prompt_text
+          if opts.step_prefix then
+            local step_num = 2 + idx -- After provider (1) and auth (2)
+            local total_steps = 2 + #required_levels
+            prompt_text = string.format("%s (%d/%d): Select %s", opts.step_prefix, step_num, total_steps, level.displayName)
+          else
+            prompt_text = "Select " .. level.displayName .. ":"
+          end
+
+          vim.ui.select(options, {
+            prompt = prompt_text,
+            format_item = function(item)
+              if item.description then
+                return string.format("%s - %s", item.displayName, item.description)
+              end
+              return item.displayName
+            end,
+          }, function(selected)
+            if selected then
+              vim.schedule(function()
+                scope.selections[level.name] = { selected.id }
+                navigate_level(idx + 1)
+              end)
+            end
+          end)
+        end, 10)
+      end)
+    end
+
+    vim.schedule(function()
+      navigate_level(1)
+    end)
   end)
 end
 
@@ -426,7 +408,7 @@ function M.shell_cmd(action)
 end
 
 ---Handle remote source commands
----@param action? string "enable"|"disable"|"list"|"auth"|"select"|"refresh"|"setup"|nil (toggle if nil)
+---@param action? string "enable"|"disable"|"list"|"auth"|"select"|"refresh"|"setup"|"shutdown"|nil (toggle if nil)
 ---@param provider? string Provider ID for provider-specific actions
 function M.remote_cmd(action, provider)
   if action == "setup" then
@@ -436,23 +418,19 @@ function M.remote_cmd(action, provider)
   elseif action == "disable" then
     disable_source("Remote")
   elseif action == "list" then
-    -- List all remote sources with their status
-    lsp_commands.list_remote_sources(function(sources, available)
-      if #sources == 0 and #available == 0 then
-        notify.info("No remote sources configured")
+    -- List all providers
+    lsp_commands.list_providers(function(providers)
+      if #providers == 0 then
+        notify.info("No remote providers configured")
         return
       end
 
-      local lines = { "Remote Sources:" }
-      for _, src in ipairs(sources) do
-        local auth_icon = src.isAuthenticated and "✓" or "○"
-        local count_str = src.secretCount > 0 and string.format(" (%d secrets)", src.secretCount) or ""
-        table.insert(lines, string.format("  %s %s [%s]%s", auth_icon, src.displayName, src.authStatus, count_str))
-      end
-
-      if #available > 0 then
-        table.insert(lines, "")
-        table.insert(lines, "Available providers: " .. table.concat(available, ", "))
+      local lines = { "Providers:" }
+      for _, p in ipairs(providers) do
+        local auth_icon = p.isAuthenticated and "✓" or "○"
+        local count_str = p.secretCount > 0 and string.format(" (%d secrets)", p.secretCount) or ""
+        local error_str = p.lastError and string.format(" (error: %s)", p.lastError) or ""
+        table.insert(lines, string.format("  %s %s [%s]%s%s", auth_icon, p.displayName, p.authStatus, count_str, error_str))
       end
 
       notify.info(table.concat(lines, "\n"))
@@ -460,9 +438,9 @@ function M.remote_cmd(action, provider)
   elseif action == "auth" then
     -- Authenticate with a provider
     if not provider then
-      -- Show picker to select provider first
-      lsp_commands.list_remote_sources(function(sources, available_providers)
-        local items = build_provider_items(sources, available_providers)
+      -- Show picker for providers
+      lsp_commands.list_providers(function(providers)
+        local items = build_external_provider_items(providers)
 
         if #items == 0 then
           notify.error("No remote providers available")
@@ -487,8 +465,8 @@ function M.remote_cmd(action, provider)
       return
     end
 
-    -- Get auth fields and prompt for credentials
-    lsp_commands.get_remote_auth_fields(provider, function(fields, err)
+    -- Get auth fields for provider
+    lsp_commands.get_provider_auth_fields(provider, function(fields, err)
       if err then
         notify.error(err)
         return
@@ -499,7 +477,7 @@ function M.remote_cmd(action, provider)
         return
       end
 
-      prompt_auth_fields(provider, fields, {
+      prompt_external_auth_fields(provider, fields, {
         on_success = function()
           -- Offer to continue to scope selection
           vim.schedule(function()
@@ -519,27 +497,26 @@ function M.remote_cmd(action, provider)
   elseif action == "select" then
     -- Interactive scope selection
     if not provider then
-      -- Show picker to select authenticated providers
-      lsp_commands.list_remote_sources(function(sources)
-        if #sources == 0 then
-          notify.error("No remote sources configured")
-          return
-        end
+      -- Show picker for authenticated providers
+      lsp_commands.list_providers(function(providers)
+        local auth_items = {}
 
-        local auth_sources = {}
-        for _, src in ipairs(sources) do
-          if src.isAuthenticated then
-            table.insert(auth_sources, src)
+        for _, p in ipairs(providers) do
+          if p.isAuthenticated then
+            table.insert(auth_items, {
+              id = p.id,
+              displayName = p.displayName,
+            })
           end
         end
 
-        if #auth_sources == 0 then
-          notify.error("No authenticated remote sources. Use ':Ecolog remote auth' first.")
+        if #auth_items == 0 then
+          notify.error("No authenticated remote providers. Use ':Ecolog remote auth' first.")
           return
         end
 
         vim.schedule(function()
-          vim.ui.select(auth_sources, {
+          vim.ui.select(auth_items, {
             prompt = "Select provider:",
             format_item = function(item)
               return item.displayName
@@ -556,31 +533,73 @@ function M.remote_cmd(action, provider)
       return
     end
 
-    -- Get source info for scope levels
-    lsp_commands.list_remote_sources(function(sources)
-      local source = find_source_by_id(sources, provider)
+    -- Scope selection for specific provider
+    lsp_commands.list_providers(function(providers)
+      local ext_provider = find_source_by_id(providers, provider)
 
-      if not source then
+      if not ext_provider then
         notify.error("Unknown provider: " .. provider)
         return
       end
 
-      if not source.isAuthenticated then
+      if not ext_provider.isAuthenticated then
         notify.error(provider .. " is not authenticated. Use ':Ecolog remote auth " .. provider .. "' first.")
         return
       end
 
-      navigate_scope_levels(provider, source, {})
+      navigate_external_scope_levels(provider, {})
     end)
   elseif action == "refresh" then
     -- Refresh secrets
-    lsp_commands.refresh_remote(provider, function(success, results, err)
-      if success then
-        local count = results and results.totalSecrets or 0
-        local sources = results and results.refreshedSources or 0
-        notify.info(string.format("Refreshed %d sources, %d secrets total", sources, count))
-      else
-        notify.error(err or "Failed to refresh")
+    if provider then
+      -- Specific provider refresh
+      lsp_commands.refresh_provider(provider, function(success, _, err)
+        if not success then
+          notify.error(err or "Failed to refresh provider")
+        end
+      end)
+    else
+      -- Refresh all providers
+      lsp_commands.refresh_provider(nil, function(success, results, err)
+        if success then
+          local count = results and results.count or 0
+          notify.info(string.format("Refreshed %d provider(s)", count))
+        else
+          notify.error(err or "Failed to refresh")
+        end
+      end)
+    end
+  elseif action == "shutdown" then
+    -- Shutdown an external provider
+    if not provider then
+      -- Show picker to select provider
+      lsp_commands.list_providers(function(providers)
+        if #providers == 0 then
+          notify.error("No external providers running")
+          return
+        end
+
+        vim.schedule(function()
+          vim.ui.select(providers, {
+            prompt = "Select provider to shutdown:",
+            format_item = function(item)
+              return item.displayName
+            end,
+          }, function(selected)
+            if selected then
+              vim.schedule(function()
+                M.remote_cmd("shutdown", selected.id)
+              end)
+            end
+          end)
+        end)
+      end)
+      return
+    end
+
+    lsp_commands.shutdown_provider(provider, function(success, err)
+      if not success then
+        notify.error(err or "Failed to shutdown provider")
       end
     end)
   else
@@ -736,7 +755,7 @@ function M._remote_setup_wizard(provider)
 
     local function continue_setup()
       if provider then
-        -- Provider specified, go straight to auth/scope flow
+        -- Provider specified
         M._setup_auth_then_scope(provider, "Setup")
       else
         -- Show provider picker
@@ -762,8 +781,8 @@ end
 ---Helper: Show provider picker with status icons
 ---@param on_select fun(provider_id: string) Callback when provider is selected
 function M._setup_provider_picker(on_select)
-  lsp_commands.list_remote_sources(function(sources, available_providers)
-    local items = build_provider_items(sources, available_providers)
+  lsp_commands.list_providers(function(providers)
+    local items = build_external_provider_items(providers)
 
     if #items == 0 then
       notify.error("No remote providers available")
@@ -791,18 +810,17 @@ end
 ---@param provider string Provider ID
 ---@param step_prefix string Prefix for step indicators (e.g., "Setup")
 function M._setup_auth_then_scope(provider, step_prefix)
-  -- Check if already authenticated
-  lsp_commands.list_remote_sources(function(sources)
-    local source = find_source_by_id(sources, provider)
+  lsp_commands.list_providers(function(providers)
+    local ext_provider = find_source_by_id(providers, provider)
 
-    if source and source.isAuthenticated then
+    if ext_provider and ext_provider.isAuthenticated then
       -- Already authenticated, go straight to scope selection
       M._setup_scope_selection(provider, step_prefix)
       return
     end
 
     -- Need to authenticate
-    lsp_commands.get_remote_auth_fields(provider, function(fields, err)
+    lsp_commands.get_provider_auth_fields(provider, function(fields, err)
       if err then
         notify.error(err)
         return
@@ -814,7 +832,7 @@ function M._setup_auth_then_scope(provider, step_prefix)
         return
       end
 
-      prompt_auth_fields(provider, fields, {
+      prompt_external_auth_fields(provider, fields, {
         step_prefix = step_prefix,
         total_steps = 2 + #fields,
         on_success = function()
@@ -831,20 +849,20 @@ end
 ---@param provider string Provider ID
 ---@param step_prefix string Prefix for step indicators
 function M._setup_scope_selection(provider, step_prefix)
-  lsp_commands.list_remote_sources(function(sources)
-    local source = find_source_by_id(sources, provider)
+  lsp_commands.list_providers(function(providers)
+    local ext_provider = find_source_by_id(providers, provider)
 
-    if not source then
+    if not ext_provider then
       notify.error("Unknown provider: " .. provider)
       return
     end
 
-    if not source.isAuthenticated then
+    if not ext_provider.isAuthenticated then
       notify.error(provider .. " is not authenticated")
       return
     end
 
-    navigate_scope_levels(provider, source, {
+    navigate_external_scope_levels(provider, {
       step_prefix = step_prefix,
     })
   end)
@@ -957,7 +975,7 @@ function M._register_commands()
         elseif sub == "remote" then
           return vim.tbl_filter(function(c)
             return c:find(arglead, 1, true) == 1
-          end, { "setup", "enable", "disable", "list", "auth", "select", "refresh" })
+          end, { "setup", "enable", "disable", "list", "auth", "select", "refresh", "shutdown" })
         elseif sub == "interpolation" then
           return vim.tbl_filter(function(c)
             return c:find(arglead, 1, true) == 1
