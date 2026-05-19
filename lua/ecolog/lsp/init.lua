@@ -161,9 +161,8 @@ function M.execute_command(command, args, callback)
 
   local client = M.get_client()
   if not client then
-    notify.warn("LSP not running")
     if callback then
-      callback({ message = "LSP not running" }, nil)
+      callback(nil, nil)
     end
     return nil
   end
